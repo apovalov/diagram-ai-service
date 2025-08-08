@@ -1,0 +1,36 @@
+exclude: '/.idea/|/.vscode/|^docs/|/migrations/|/.pytest_cache/|/.venv/|/diagram_api_service\.egg-info/'
+default_language_version:
+  python: python3
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+    - id: check-json
+    - id: check-toml
+    - id: check-xml
+    - id: check-yaml
+    - id: debug-statements
+    - id: check-builtin-literals
+    - id: check-case-conflict
+    - id: check-docstring-first
+    - id: detect-private-key
+    - id: check-symlinks
+    - id: check-vcs-permalinks
+    - id: check-illegal-windows-names
+    - id: trailing-whitespace
+    - id: end-of-file-fixer
+    - id: check-merge-conflict
+    - id: check-added-large-files
+      args: ['--maxkb=1000']
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.7
+    hooks:
+      - id: ruff
+        name: ruff fix (quiet)
+        args: [ "--fix-only" ] # Fix everything that can be fixed, but don't fail.
+      - id: ruff
+        name: ruff fix (raise)
+        args: [ "--fix", ] # Fix everything that can be fixed, and fail if there are any issues.
+      - id: ruff-format

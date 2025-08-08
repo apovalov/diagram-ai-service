@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app
+      - /tmp/diagrams:/tmp/diagrams
+    env_file:
+      - .env
+
+  test:
+    build: .
+    command: pytest
+    volumes:
+      - ./app:/app
+      - ./tests:/app/tests
+    env_file:
+      - .env
