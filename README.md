@@ -170,6 +170,7 @@ curl -s -X POST "http://localhost:8000/api/v1/generate-diagram" \
 ```
 
 **Output**
+
 <img width="720" height="603" alt="diagram5" src="https://github.com/user-attachments/assets/06a5147b-a806-4ae9-8cfe-cfe0797307fb" />
 
 
@@ -192,6 +193,7 @@ curl -s -X POST "http://localhost:8000/api/v1/generate-diagram" \
 ```
 
 **Output**
+
 <img width="460" height="402" alt="diagram6" src="https://github.com/user-attachments/assets/46ca0ca0-cdaa-485c-97a3-f77f84e99b53" />
 
 
@@ -214,6 +216,7 @@ curl -s -X POST "http://localhost:8000/api/v1/generate-diagram" \
 ```
 
 **Output**
+
 <img width="450" height="650" alt="diagram7" src="https://github.com/user-attachments/assets/e316755a-5e8d-424a-a37e-4f037e3181c4" />
 
 
