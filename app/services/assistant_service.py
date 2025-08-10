@@ -4,6 +4,7 @@ from google.genai import types as genai_types
 
 from app.agents.assistant_agent import AssistantAgent
 from app.core.config import Settings
+from app.core.constants import IntentType
 from app.core.llm import client
 from app.core.logging import get_logger
 from app.core.schemas import AssistantFinal, AssistantRequest, AssistantResponse, IntentResult
@@ -44,7 +45,7 @@ class AssistantService:
         )
         intent = intent_result.intent
 
-        if intent == "generate_diagram":
+        if intent == IntentType.GENERATE_DIAGRAM.value:
             description = intent_result.description
             if not description:
                 return AssistantResponse(
@@ -61,7 +62,7 @@ class AssistantService:
             )
             self._update_conversation_context(conversation_id, context)
             return response
-        elif intent == "clarification":
+        elif intent == IntentType.CLARIFICATION.value:
             response = AssistantResponse(
                 response_type="text",
                 content="I am an AI assistant that can generate diagrams from natural language descriptions. How can I help you?",
@@ -71,7 +72,7 @@ class AssistantService:
                     "Design a web application flow",
                 ],
             )
-        elif intent == "greeting":
+        elif intent == IntentType.GREETING.value:
             response = AssistantResponse(
                 response_type="text",
                 content="Hello! How can I help you create a diagram today?",
@@ -207,7 +208,7 @@ class AssistantService:
         Using FunctionCallingConfig(mode='ANY') strongly encourages tool use.
         """
         generate_fn = genai_types.FunctionDeclaration(
-            name="generate_diagram",
+            name=IntentType.GENERATE_DIAGRAM.value,
             description="Generate a diagram from a natural language description.",
             parameters=genai_types.Schema(
                 type=genai_types.Type.OBJECT,
@@ -250,7 +251,7 @@ class AssistantService:
         fn_call = resp.function_calls[0]
         args = fn_call.args or {}
 
-        if fn_call.name == "generate_diagram":
+        if fn_call.name == IntentType.GENERATE_DIAGRAM.value:
             desc = str(args.get("description", description))
             (
                 latest_image_data,
@@ -258,7 +259,7 @@ class AssistantService:
             ) = await self.diagram_service.generate_diagram_from_description(desc)
 
             tool_part = genai_types.Part.from_function_response(
-                name="generate_diagram",
+                name=IntentType.GENERATE_DIAGRAM.value,
                 response={
                     "image_data": latest_image_data,
                     "metadata": latest_metadata,

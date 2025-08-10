@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 from app.core.config import settings
+from app.core.constants import (
+    IntentType,
+    GREETING_PHRASES,
+    DIAGRAM_PHRASES,
+    HELP_PHRASES,
+)
 from app.core.llm import client
 from app.core.schemas import IntentResult
 from app.core.prompts import intent_prompt
@@ -21,14 +27,14 @@ class AssistantAgent:
         # If running with mock LLM, return a simple deterministic intent result
         if settings.mock_llm:
             lower = message.lower()
-            if any(word in lower for word in ["hello", "hi", "hey"]):
-                return IntentResult(intent="greeting", confidence=1.0)
-            if any(word in lower for word in ["create", "generate", "diagram", "draw"]):
+            if any(word in lower for word in GREETING_PHRASES):
+                return IntentResult(intent=IntentType.GREETING.value, confidence=1.0)
+            if any(word in lower for word in DIAGRAM_PHRASES):
                 desc = message
                 return IntentResult(
-                    intent="generate_diagram", description=desc, confidence=0.9
+                    intent=IntentType.GENERATE_DIAGRAM.value, description=desc, confidence=0.9
                 )
-            return IntentResult(intent="clarification", confidence=0.6)
+            return IntentResult(intent=IntentType.CLARIFICATION.value, confidence=0.6)
 
         # Include context in prompt if available
         context_str = ""
@@ -58,11 +64,11 @@ class AssistantAgent:
         message_lower = message.lower()
         if any(
             word in message_lower
-            for word in ["create", "generate", "diagram", "draw", "build"]
+            for word in DIAGRAM_PHRASES
         ):
             return IntentResult(
-                intent="generate_diagram", confidence=0.5, description=message
+                intent=IntentType.GENERATE_DIAGRAM.value, confidence=0.5, description=message
             )
-        if any(word in message_lower for word in ["help", "how", "what", "explain"]):
-            return IntentResult(intent="help", confidence=0.5)
-        return IntentResult(intent="general", confidence=0.3)
+        if any(word in message_lower for word in HELP_PHRASES):
+            return IntentResult(intent=IntentType.HELP.value, confidence=0.5)
+        return IntentResult(intent=IntentType.GENERAL.value, confidence=0.3)

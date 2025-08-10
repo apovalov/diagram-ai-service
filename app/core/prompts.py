@@ -1,6 +1,8 @@
 # prompts.py
 from __future__ import annotations
 
+from app.core.constants import IntentType
+
 __all__ = [
     "intent_prompt",
     "diagram_analysis_prompt",
@@ -25,15 +27,15 @@ You are an intelligent assistant. Determine the user's intent from their message
 Message: """{safe_message}"""
 
 Possible intents are:
-- "generate_diagram": The user wants to generate a diagram.
-- "clarification": The user is asking for more information or clarification.
-- "greeting": The user is just saying hello.
-- "unknown": The user's intent is unclear.
+- "{IntentType.GENERATE_DIAGRAM.value}": The user wants to generate a diagram.
+- "{IntentType.CLARIFICATION.value}": The user is asking for more information or clarification.
+- "{IntentType.GREETING.value}": The user is just saying hello.
+- "{IntentType.UNKNOWN.value}": The user's intent is unclear.
 
 Respond ONLY with a JSON object:
 {{
-  "intent": "<one of: generate_diagram | clarification | greeting | unknown>",
-  "description": "<optional short paraphrase if intent is generate_diagram>"
+  "intent": "<one of: {IntentType.GENERATE_DIAGRAM.value} | {IntentType.CLARIFICATION.value} | {IntentType.GREETING.value} | {IntentType.UNKNOWN.value}>",
+  "description": "<optional short paraphrase if intent is {IntentType.GENERATE_DIAGRAM.value}>"
 }}
 '''
 

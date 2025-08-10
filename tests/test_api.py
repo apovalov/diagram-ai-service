@@ -7,6 +7,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.main import app, get_assistant_service, get_diagram_service, get_settings
 from app.core.config import Settings
+from app.core.constants import IntentType
 from app.core.schemas import AssistantRequest, AssistantResponse, IntentResult
 from app.services.assistant_service import AssistantService
 from app.services.diagram_service import DiagramService
@@ -203,7 +204,7 @@ async def test_assistant_service_memory():
 
     # Mock the agent to return predictable results
     with patch.object(service.assistant_agent, "get_intent") as mock_intent:
-        mock_intent.return_value = IntentResult(intent="greeting")
+        mock_intent.return_value = IntentResult(intent=IntentType.GREETING.value)
 
         # First message
         request1 = AssistantRequest(message="Hello", conversation_id="test-conv")
@@ -214,7 +215,7 @@ async def test_assistant_service_memory():
         assert len(context["messages"]) == 2  # User + Assistant
 
         # Second message with same conversation ID
-        mock_intent.return_value = IntentResult(intent="clarification")
+        mock_intent.return_value = IntentResult(intent=IntentType.CLARIFICATION.value)
         request2 = AssistantRequest(message="Tell me more", conversation_id="test-conv")
         await service.process_message(request2)
 
