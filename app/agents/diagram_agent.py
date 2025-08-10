@@ -1,9 +1,13 @@
+# diagram_agent.py
 from __future__ import annotations
 
+import time
 from google.genai import types as genai_types
 
 from app.core.config import settings
+from app.core.constants import AWS_COMPONENTS
 from app.core.llm import client
+from app.core.logging import get_logger
 from app.core.schemas import (
     AnalysisCluster,
     AnalysisConnection,
@@ -24,28 +28,33 @@ class DiagramAgent:
     """Agent for analyzing diagram descriptions and extracting components."""
 
     def __init__(self) -> None:
-        pass
+        self.logger = get_logger(__name__)
 
     async def generate_analysis(self, description: str) -> DiagramAnalysis:
         """Generate diagram component analysis from description."""
-        # Mocked local analysis for development/test when mock mode is enabled
         if settings.mock_llm:
             return DiagramAnalysis(
                 title="Application Diagram",
                 nodes=[
-                    {"id": "alb", "type": "alb", "label": "ALB"},
-                    {"id": "web1", "type": "ec2", "label": "Web 1"},
-                    {"id": "db", "type": "rds", "label": "DB"},
+                    AnalysisNode(id="alb", type="alb", label="Application Load Balancer"),
+                    AnalysisNode(id="web1", type="ec2", label="Web 1"),
+                    AnalysisNode(id="db", type="rds", label="DB"),
                 ],
-                clusters=[{"label": "Web Tier", "nodes": ["web1"]}],
+                clusters=[AnalysisCluster(label="Web Tier", nodes=["web1"])],
                 connections=[
-                    {"source": "alb", "target": "web1"},
-                    {"source": "web1", "target": "db"},
+                    AnalysisConnection(source="alb", target="web1"),
+                    AnalysisConnection(source="web1", target="db"),
                 ],
             )
 
         prompt = diagram_analysis_prompt(description)
         try:
+            start = time.monotonic()
+            self.logger.info(
+                "Requesting LLM analysis (model=%s, desc_len=%d)",
+                settings.gemini_model,
+                len(description or ""),
+            )
             response = await client.aio.models.generate_content(
                 model=settings.gemini_model,
                 contents=prompt,
@@ -54,16 +63,50 @@ class DiagramAgent:
                     "response_schema": DiagramAnalysis,
                 },
             )
+            elapsed_ms = int((time.monotonic() - start) * 1000)
             if getattr(response, "parsed", None):
+                try:
+                    node_count = len(response.parsed.nodes)
+                    conn_count = len(response.parsed.connections)
+                    cluster_count = len(response.parsed.clusters)
+                except Exception:
+                    node_count = conn_count = cluster_count = -1
+                self.logger.info(
+                    "LLM analysis parsed successfully in %d ms (nodes=%s, conns=%s, clusters=%s)",
+                    elapsed_ms,
+                    node_count,
+                    conn_count,
+                    cluster_count,
+                )
                 return response.parsed
             else:
+                raw_text = None
+                try:
+                    raw_text = getattr(response, "text", None)
+                    if not raw_text and hasattr(response, "candidates"):
+                        parts_text: list[str] = []
+                        for c in getattr(response, "candidates", []) or []:
+                            content = getattr(c, "content", None) or getattr(c, "output", None)
+                            if content and hasattr(content, "parts"):
+                                for p in content.parts:
+                                    t = getattr(p, "text", None)
+                                    if t:
+                                        parts_text.append(t)
+                        raw_text = "\n".join(parts_text) if parts_text else None
+                except Exception:
+                    pass
+                preview = (raw_text or "<no-text>")[:500]
+                self.logger.warning(
+                    "LLM response had no parsed content after %d ms. Preview: %s",
+                    elapsed_ms,
+                    preview,
+                )
                 raise ValueError("Failed to parse LLM response as JSON.")
         except Exception as e:
+            self.logger.exception("LLM analysis failed; using heuristic fallback: %s", e)
             return self._heuristic_analysis(description)
 
-    async def critique_analysis(
-        self, description: str, analysis: DiagramAnalysis, image_bytes: bytes
-    ) -> DiagramCritique:
+    async def critique_analysis(self, description: str, analysis: DiagramAnalysis, image_bytes: bytes) -> DiagramCritique:
         if settings.mock_llm:
             return DiagramCritique(done=True, critique=None)
 
@@ -84,9 +127,7 @@ class DiagramAgent:
             return response.parsed
         raise ValueError("Failed to parse critique as JSON.")
 
-    async def adjust_analysis(
-        self, description: str, analysis: DiagramAnalysis, critique: str
-    ) -> DiagramAnalysis:
+    async def adjust_analysis(self, description: str, analysis: DiagramAnalysis, critique: str) -> DiagramAnalysis:
         if settings.mock_llm:
             return analysis
 
@@ -103,10 +144,11 @@ class DiagramAgent:
             return response.parsed
         raise ValueError("Failed to parse adjusted analysis as JSON.")
 
+    # -------------------- heuristic fallback --------------------
+
     def _heuristic_analysis(self, description: str) -> DiagramAnalysis:
-        # AI-generated fallback, didn't check it thoroughly enough
         """Very basic keyword-based extraction to enable a best-effort render when LLM is unavailable."""
-        text = description.lower()
+        text = (description or "").lower()
 
         nodes: list[AnalysisNode] = []
         connections: list[AnalysisConnection] = []
@@ -116,27 +158,27 @@ class DiagramAgent:
             if not any(n.id == node_id for n in nodes):
                 nodes.append(AnalysisNode(id=node_id, type=type_, label=label))
 
-        # Common components
-        if any(
-            k in text for k in ["alb", "load balancer", "application load balancer"]
-        ):
-            add("alb", "alb", "Application Load Balancer")
-        if any(k in text for k in ["api gateway", "apigateway", "gateway"]):
-            add("api_gw", "api_gateway", "API Gateway")
-        if any(k in text for k in ["ec2", "server", "service", "microservice", "web"]):
-            add("web1", "ec2", "Web / Service")
-        if "lambda" in text:
-            add("lambda", "lambda", "Lambda Function")
-        if any(k in text for k in ["rds", "postgres", "mysql", "database", "db"]):
-            add("db", "rds", "Database")
-        if any(k in text for k in ["s3", "bucket", "object storage"]):
-            add("s3", "s3", "S3 Bucket")
-        if "sqs" in text or "queue" in text:
-            add("queue", "sqs", "Queue")
-        if "sns" in text:
-            add("sns", "sns", "SNS Topic")
-        if any(k in text for k in ["cloudwatch", "monitoring", "metrics"]):
-            add("cw", "cloudwatch", "CloudWatch")
+        # Common components (canonical types only)
+        if any(k in text for k in AWS_COMPONENTS["alb"]["keywords"]):
+            add("alb", AWS_COMPONENTS["alb"]["type"], AWS_COMPONENTS["alb"]["label"])
+        if any(k in text for k in AWS_COMPONENTS["api_gateway"]["keywords"]):
+            add("api_gw", AWS_COMPONENTS["api_gateway"]["type"], AWS_COMPONENTS["api_gateway"]["label"])
+        if any(k in text for k in AWS_COMPONENTS["ec2"]["keywords"]):
+            add("web1", AWS_COMPONENTS["ec2"]["type"], AWS_COMPONENTS["ec2"]["label"])
+        if any(k in text for k in AWS_COMPONENTS["lambda"]["keywords"]):
+            add("lambda", AWS_COMPONENTS["lambda"]["type"], AWS_COMPONENTS["lambda"]["label"])
+        if any(k in text for k in AWS_COMPONENTS["rds"]["keywords"]):
+            add("db", AWS_COMPONENTS["rds"]["type"], AWS_COMPONENTS["rds"]["label"])
+        if any(k in text for k in AWS_COMPONENTS["s3"]["keywords"]):
+            add("s3", AWS_COMPONENTS["s3"]["type"], AWS_COMPONENTS["s3"]["label"])
+        if any(k in text for k in AWS_COMPONENTS["sqs"]["keywords"]):
+            add("queue", AWS_COMPONENTS["sqs"]["type"], AWS_COMPONENTS["sqs"]["label"])
+        if any(k in text for k in AWS_COMPONENTS["sns"]["keywords"]):
+            add("sns", AWS_COMPONENTS["sns"]["type"], AWS_COMPONENTS["sns"]["label"])
+        if any(k in text for k in AWS_COMPONENTS["cloudwatch"]["keywords"]):
+            add("cw", AWS_COMPONENTS["cloudwatch"]["type"], AWS_COMPONENTS["cloudwatch"]["label"])
+        if any(k in text for k in AWS_COMPONENTS["cognito"]["keywords"]):
+            add("cognito", AWS_COMPONENTS["cognito"]["type"], AWS_COMPONENTS["cognito"]["label"])
 
         # Defaults if nothing matched
         if not nodes:

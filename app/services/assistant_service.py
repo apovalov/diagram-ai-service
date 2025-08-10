@@ -4,9 +4,10 @@ from google.genai import types as genai_types
 
 from app.agents.assistant_agent import AssistantAgent
 from app.core.config import Settings
+from app.core.constants import IntentType
 from app.core.llm import client
 from app.core.logging import get_logger
-from app.core.schemas import AssistantRequest, AssistantResponse, IntentResult
+from app.core.schemas import AssistantFinal, AssistantRequest, AssistantResponse, IntentResult
 from app.services.diagram_service import DiagramService
 
 __all__ = ["AssistantService"]
@@ -44,7 +45,7 @@ class AssistantService:
         )
         intent = intent_result.intent
 
-        if intent == "generate_diagram":
+        if intent == IntentType.GENERATE_DIAGRAM.value:
             description = intent_result.description
             if not description:
                 return AssistantResponse(
@@ -61,7 +62,7 @@ class AssistantService:
             )
             self._update_conversation_context(conversation_id, context)
             return response
-        elif intent == "clarification":
+        elif intent == IntentType.CLARIFICATION.value:
             response = AssistantResponse(
                 response_type="text",
                 content="I am an AI assistant that can generate diagrams from natural language descriptions. How can I help you?",
@@ -71,7 +72,7 @@ class AssistantService:
                     "Design a web application flow",
                 ],
             )
-        elif intent == "greeting":
+        elif intent == IntentType.GREETING.value:
             response = AssistantResponse(
                 response_type="text",
                 content="Hello! How can I help you create a diagram today?",
@@ -125,7 +126,10 @@ class AssistantService:
                     model=self.settings.gemini_model,
                     contents=contents,
                     config=genai_types.GenerateContentConfig(
-                        tools=[tool], tool_config=tool_config
+                        tools=[tool],
+                        tool_config=tool_config,
+                        response_mime_type="application/json",
+                        response_schema=AssistantFinal,
                     ),
                 )
             except Exception as e:
@@ -158,17 +162,26 @@ class AssistantService:
             if did_call:
                 continue
 
-            # No tool call → finalize
-            final_text = resp.text or "Here is the diagram you requested:"
+            # No tool call → finalize via structured output
+            final: AssistantFinal | None = getattr(resp, "parsed", None)
+            if not final:
+                # Defensive fallback in case SDK returns non-parsed
+                text_fallback = getattr(resp, "text", None) or "Here is the diagram you requested:"
+                return AssistantResponse(
+                    response_type="image" if latest_image_data else "text",
+                    content=text_fallback,
+                    image_data=latest_image_data,
+                    suggestions=(
+                        ["Would you like me to adjust layout or add components?"]
+                        if latest_image_data
+                        else None
+                    ),
+                )
             return AssistantResponse(
                 response_type="image" if latest_image_data else "text",
-                content=final_text,
+                content=final.content,
                 image_data=latest_image_data,
-                suggestions=(
-                    ["Would you like me to adjust layout or add components?"]
-                    if latest_image_data
-                    else None
-                ),
+                suggestions=final.suggestions,
             )
 
         # Safety fallback
@@ -195,17 +208,17 @@ class AssistantService:
         Using FunctionCallingConfig(mode='ANY') strongly encourages tool use.
         """
         generate_fn = genai_types.FunctionDeclaration(
-            name="generate_diagram",
+            name=IntentType.GENERATE_DIAGRAM.value,
             description="Generate a diagram from a natural language description.",
             parameters=genai_types.Schema(
-                type="OBJECT",
-                properties={"description": genai_types.Schema(type="STRING")},
+                type=genai_types.Type.OBJECT,
+                properties={"description": genai_types.Schema(type=genai_types.Type.STRING)},
                 required=["description"],
             ),
         )
         tool = genai_types.Tool(function_declarations=[generate_fn])
         tool_config = genai_types.ToolConfig(
-            function_calling_config=genai_types.FunctionCallingConfig(mode="ANY")
+            function_calling_config=genai_types.FunctionCallingConfig(mode=genai_types.FunctionCallingConfigMode.ANY)
         )
         return tool, tool_config
 
@@ -238,7 +251,7 @@ class AssistantService:
         fn_call = resp.function_calls[0]
         args = fn_call.args or {}
 
-        if fn_call.name == "generate_diagram":
+        if fn_call.name == IntentType.GENERATE_DIAGRAM.value:
             desc = str(args.get("description", description))
             (
                 latest_image_data,
@@ -246,7 +259,7 @@ class AssistantService:
             ) = await self.diagram_service.generate_diagram_from_description(desc)
 
             tool_part = genai_types.Part.from_function_response(
-                name="generate_diagram",
+                name=IntentType.GENERATE_DIAGRAM.value,
                 response={
                     "image_data": latest_image_data,
                     "metadata": latest_metadata,

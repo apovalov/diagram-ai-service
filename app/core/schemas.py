@@ -8,6 +8,7 @@ __all__ = [
     "DiagramResponse",
     "AssistantRequest",
     "AssistantResponse",
+    "AssistantFinal",
     "IntentResult",
     "Timing",
     # llm structured output models
@@ -30,6 +31,7 @@ class DiagramMetadata(BaseModel):
     connections_made: int
     generation_time: float
     timing: Timing | None = None
+    analysis_method: str | None = None
 
 
 class DiagramResponse(BaseModel):
@@ -49,6 +51,13 @@ class AssistantResponse(BaseModel):
     response_type: str
     content: str
     image_data: str | None = None
+    suggestions: list[str] | None = None
+
+
+class AssistantFinal(BaseModel):
+    """Structured finalization payload from the LLM when no tool call is made."""
+
+    content: str
     suggestions: list[str] | None = None
 
 
