@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
 # Install uv
 RUN pip install uv
 
-# Copy dependency files
+# Copy dependency files for layer caching
 COPY pyproject.toml ./
 
 # Install dependencies (production only)

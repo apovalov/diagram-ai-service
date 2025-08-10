@@ -2,20 +2,30 @@ version: '3.8'
 
 services:
   api:
-    build: .
+    build:
+      context: .
+      target: production  # Use multi-stage target
+    image: diagram-api-service:latest
     ports:
       - "8000:8000"
     volumes:
-      - ./app:/app
+      - ./app:/app  # Mount source for development
       - /tmp/diagrams:/tmp/diagrams
+      - pip-cache:/root/.cache/pip  # Cache pip downloads
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app
 
   test:
-    build: .
+    image: diagram-api-service:latest
     command: pytest
     volumes:
       - ./app:/app
       - ./tests:/app/tests
+      - pip-cache:/root/.cache/pip
     env_file:
       - .env
+
+volumes:
+  pip-cache:

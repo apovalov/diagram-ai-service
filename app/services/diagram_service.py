@@ -24,6 +24,7 @@ from app.agents.diagram_agent import DiagramAgent
 from app.core.config import Settings
 from app.core.logging import get_logger
 from app.core.schemas import AnalysisCluster, AnalysisConnection, AnalysisNode, DiagramAnalysis, Timing
+from app.utils.cleanup import cleanup_old_files, cleanup_outputs_directory, temp_file_manager
 from app.utils.files import save_image_bytes
 from app.utils.timing import Timer
 
@@ -107,6 +108,19 @@ class DiagramService:
         if not os.path.exists(self.temp_dir):
             os.makedirs(self.temp_dir)
         self.agent = DiagramAgent()
+
+        # Run cleanup on initialization
+        self._cleanup_old_files()
+
+    def _cleanup_old_files(self) -> None:
+        """Clean up old temporary files on service initialization."""
+        try:
+            # Clean up files older than 24 hours
+            cleanup_old_files(self.temp_dir, max_age_hours=24)
+            # Clean up outputs directory, keeping only 50 most recent files
+            cleanup_outputs_directory(self.temp_dir, max_files=50)
+        except Exception as e:
+            logger.warning(f"Failed to cleanup old files: {e}")
 
     async def generate_diagram_from_description(self, description: str) -> tuple[str, dict[str, Any]]:
         """Generate diagram from natural language description with end-to-end timing."""
@@ -225,7 +239,7 @@ class DiagramService:
         conns_out: list[AnalysisConnection] = []
         for c in analysis.connections:
             if c.source in id_set and c.target in id_set and c.source != c.target:
-                conns_out.append(AnalysisConnection(source=c.source, target=c.target, label=getattr(c, "label", None)))
+                conns_out.append(AnalysisConnection(source=c.source, target=c.target))
             else:
                 logger.debug("Dropping invalid connection: %s -> %s", c.source, c.target)
 
@@ -242,12 +256,11 @@ class DiagramService:
 
     def _generate_diagram_sync(self, analysis_result: DiagramAnalysis, description: str) -> tuple[str, dict[str, Any]]:
         """Synchronous diagram generation (runs in thread pool)."""
-        workdir = tempfile.mkdtemp(dir=self.temp_dir)
-        diagram_path = os.path.join(workdir, "diagram")
-        nodes: dict[str, Any] = {}
-        start_time = time.time()
+        with temp_file_manager(self.temp_dir) as workdir:
+            diagram_path = os.path.join(workdir, "diagram")
+            nodes: dict[str, Any] = {}
+            start_time = time.time()
 
-        try:
             normalized = self._normalize_analysis(analysis_result, strict=True)
 
             with Diagram(
@@ -304,17 +317,18 @@ class DiagramService:
                 with open(out, "w", encoding="utf-8") as dot_file:
                     dot_file.write(synthesized_dot)
                 logger.info("DOT synthesized and saved: %s", out)
-        finally:
-            shutil.rmtree(workdir, ignore_errors=True)
 
-        metadata = {
-            "nodes_created": len(analysis_result.nodes),
-            "clusters_created": len(analysis_result.clusters),
-            "connections_made": len(analysis_result.connections),
-            "generation_time": generation_time,
-        }
+            # Periodic cleanup of outputs directory
+            cleanup_outputs_directory(self.settings.tmp_dir, max_files=50)
 
-        return image_data, metadata
+            metadata = {
+                "nodes_created": len(analysis_result.nodes),
+                "clusters_created": len(analysis_result.clusters),
+                "connections_made": len(analysis_result.connections),
+                "generation_time": generation_time,
+            }
+
+            return image_data, metadata
 
     def _build_dot_from_analysis(self, analysis: DiagramAnalysis) -> str:
         """
