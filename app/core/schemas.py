@@ -30,6 +30,7 @@ class DiagramMetadata(BaseModel):
     connections_made: int
     generation_time: float
     timing: Timing | None = None
+    analysis_method: str | None = None
 
 
 class DiagramResponse(BaseModel):
