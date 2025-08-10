@@ -1,131 +1,3 @@
-# from __future__ import annotations
-
-# __all__ = [
-#     "intent_prompt",
-#     "diagram_analysis_prompt",
-#     "diagram_critique_prompt",
-#     "diagram_adjustment_prompt",
-# ]
-
-
-# def intent_prompt(message: str) -> str:
-#     """Generate intent classification prompt for assistant agent."""
-#     # escape potential injection by wrapping in triple quotes and escaping triple quotes
-#     safe_message = message.replace('"""', r"\"\"\"").replace("\\", "\\\\")
-#     return f'''
-# You are an intelligent assistant. Your job is to determine the user's intent from their message.
-
-# Message: """{safe_message}"""
-
-# Possible intents are:
-# - "generate_diagram": The user wants to generate a diagram.
-# - "clarification": The user is asking for more information or clarification.
-# - "greeting": The user is just saying hello.
-# - "unknown": The user's intent is unclear.
-
-# Please respond with a JSON object containing the user's intent and any relevant entities.
-# For example:
-# {{
-#     "intent": "generate_diagram",
-#     "description": "Create a diagram of a web application."
-# }}
-# '''
-
-
-# def diagram_analysis_prompt(description: str) -> str:
-#     """Generate diagram analysis prompt for diagram agent."""
-#     # escape potential injection by wrapping in triple quotes and escaping triple quotes
-#     safe_description = description.replace('"""', r"\"\"\"").replace("\\", "\\\\")
-#     return f'''
-# You are a diagram architecture expert. Analyze the user's natural language description and break it down into specific components, relationships, and groupings needed for a technical diagram.
-
-# Description: """{safe_description}"""
-
-# Available component types:
-# - Compute: ec2, lambda, service, microservice, web_server
-# - Database: rds, dynamodb, database
-# - Network & Load Balancing: elb, alb, nlb, api_gateway, apigateway, gateway
-# - Storage: s3
-# - Integration & Messaging: sqs, sns, queue
-# - Management & Monitoring: cloudwatch, monitoring
-# - Security: iam, cognito, auth_service
-# - Analytics: kinesis
-# - Developer Tools: codebuild, codepipeline
-
-# Please identify:
-# 1. All nodes/components mentioned (give each a unique id)
-# 2. Their types (use the available types listed above)
-# 3. Any grouping/clustering requirements
-# 4. Connections and relationships between components (using the unique ids)
-# 5. Any specific labeling requirements
-
-# For microservices, use "service" or "microservice" type, or specific service types like "auth_service", "payment_service", "order_service".
-# For Application Load Balancer, use "alb" type.
-# For API Gateway, use "api_gateway" type.
-# For SQS queues, use "sqs" type.
-# For CloudWatch monitoring, use "cloudwatch" type.
-
-# Respond in structured JSON format like this example:
-
-# {{
-#     "title": "Application Diagram",
-#     "nodes": [
-#         {{"id": "alb", "type": "alb", "label": "Application Load Balancer"}},
-#         {{"id": "web1", "type": "ec2", "label": "Web Server 1"}},
-#         {{"id": "web2", "type": "ec2", "label": "Web Server 2"}},
-#         {{"id": "db", "type": "rds", "label": "Database"}},
-#         {{"id": "api_gw", "type": "api_gateway", "label": "API Gateway"}},
-#         {{"id": "auth_svc", "type": "auth_service", "label": "Authentication Service"}},
-#         {{"id": "queue", "type": "sqs", "label": "Message Queue"}},
-#         {{"id": "monitoring", "type": "cloudwatch", "label": "CloudWatch"}}
-#     ],
-#     "clusters": [
-#         {{"label": "Web Tier", "nodes": ["web1", "web2"]}},
-#         {{"label": "Microservices", "nodes": ["auth_svc"]}}
-#     ],
-#     "connections": [
-#         {{"source": "alb", "target": "web1"}},
-#         {{"source": "alb", "target": "web2"}},
-#         {{"source": "web1", "target": "db"}},
-#         {{"source": "web2", "target": "db"}},
-#         {{"source": "api_gw", "target": "auth_svc"}},
-#         {{"source": "auth_svc", "target": "queue"}}
-#     ]
-# }}
-# '''
-
-
-# def diagram_critique_prompt(description: str) -> str:
-#     return f'''
-# You are a senior systems architect. You will be given:
-# - A user's description of the desired diagram
-# - The current rendered diagram image
-# - The current structured analysis used to produce the diagram
-
-# Task:
-# 1) Judge whether the current diagram fully satisfies the user's description.
-#   a) If there is a node which is not connected to any other node, it is a sign that something is missing, not always true though.
-#   b) If there is a node connected to all other nodes the graph gets unreadable and we need to think about how to limit the number of connections.
-# 2) If the diagram does satisfy the user's description, set done=true. If not, set done=false and provide a concise critique of what is missing or incorrect.
-
-# Respond strictly as JSON:
-# {{
-#   "done": <true|false>,
-#   "critique": "<brief explanation if not done>"
-# }}
-
-# User description: """{description}"""
-# '''
-
-
-# def diagram_adjustment_prompt(description: str, critique: str) -> str:
-#     return f'''
-# You are a senior systems architect. The current diagram does not satisfy the request.
-# User description: """{description}"""
-# Critique: """{critique}"""
-
-# Adjust the structured diagram analysis so that the next render addresses the critique. Return only valid JSON matching the DiagramAnalysis schema.
-# '''
 # prompts.py
 from __future__ import annotations
 
@@ -183,24 +55,21 @@ Canonical component types (use these exact values in "type"):
 - Integration: sqs, sns
 - Observability & Identity: cloudwatch, cognito
 
-Aliases (normalize input to canonical types BEFORE output; still output canonical types):
-- apigateway / gateway → api_gateway
-- monitoring → cloudwatch
-- database → rds
-- web_server → ec2
-- microservice → service
-- queue → sqs
-- auth_service / payment_service / order_service → service (keep labels descriptive)
+Clustering Guidelines:
+- Each node can belong to ONLY ONE cluster - no overlapping clusters allowed
+- When choosing between multiple possible groupings, prioritize FUNCTIONAL groupings over infrastructure groupings
+- Examples of functional groupings: "Web Tier", "Microservices", "Data Layer", "Processing Pipeline"
+- Examples of infrastructure groupings: "VPC", "Availability Zone", "Network Segment"
+- If a description mentions both (e.g., "microservices in a VPC"), choose the functional grouping ("Microservices")
+- Infrastructure components that don't fit functional groups should remain unclustered
 
 Rules:
 - Do not invent components not present or clearly implied.
-- If the user mentions an unsupported AWS service (e.g., ELB/NLB/IAM/Route53/EKS/Step Functions/CodeBuild/CodePipeline/Kinesis),
-  choose the closest canonical type or "service" with a clear label (e.g., "Payment Service").
-- Every node must have a unique "id" and a human-readable "label".
-- "connections" must reference existing node ids.
-- Use "clusters" to group nodes (e.g., "Web Tier", "Microservices"). Clusters are optional.
-- Prefer simple, direct edges unless the text implies a specific flow or fan-out.
-- Respond as VALID JSON only (no comments, no trailing commas).
+- If the user mentions an unsupported AWS service, choose the closest canonical type
+- Every node must have a unique "id" and a human-readable "label"
+- "connections" must reference existing node ids
+- Prefer simple, direct edges unless the text implies a specific flow
+- Respond as VALID JSON only (no comments, no trailing commas)
 
 Schema:
 {{
@@ -216,30 +85,31 @@ Schema:
   ]
 }}
 
-Example output:
+Example (functional grouping preferred):
 {{
-  "title": "Application Diagram",
+  "title": "Microservices Architecture",
   "nodes": [
-    {{"id": "alb", "type": "alb", "label": "Application Load Balancer"}},
-    {{"id": "web1", "type": "ec2", "label": "Web Server 1"}},
-    {{"id": "web2", "type": "ec2", "label": "Web Server 2"}},
-    {{"id": "db", "type": "rds", "label": "Relational Database"}},
     {{"id": "api_gw", "type": "api_gateway", "label": "API Gateway"}},
-    {{"id": "auth_svc", "type": "service", "label": "Authentication Service"}},
+    {{"id": "auth_svc", "type": "service", "label": "Auth Service"}},
+    {{"id": "payment_svc", "type": "service", "label": "Payment Service"}},
+    {{"id": "order_svc", "type": "service", "label": "Order Service"}},
     {{"id": "queue", "type": "sqs", "label": "Message Queue"}},
-    {{"id": "mon", "type": "cloudwatch", "label": "CloudWatch"}}
+    {{"id": "db", "type": "rds", "label": "Database"}},
+    {{"id": "cognito", "type": "cognito", "label": "User Pool"}}
   ],
   "clusters": [
-    {{"label": "Web Tier", "nodes": ["web1", "web2"]}},
-    {{"label": "Microservices", "nodes": ["auth_svc"]}}
+    {{"label": "Microservices", "nodes": ["auth_svc", "payment_svc", "order_svc"]}}
   ],
   "connections": [
-    {{"source": "alb", "target": "web1"}},
-    {{"source": "alb", "target": "web2"}},
-    {{"source": "web1", "target": "db"}},
-    {{"source": "web2", "target": "db"}},
+    {{"source": "cognito", "target": "api_gw"}},
     {{"source": "api_gw", "target": "auth_svc"}},
-    {{"source": "auth_svc", "target": "queue"}}
+    {{"source": "api_gw", "target": "payment_svc"}},
+    {{"source": "api_gw", "target": "order_svc"}},
+    {{"source": "order_svc", "target": "queue"}},
+    {{"source": "queue", "target": "payment_svc"}},
+    {{"source": "auth_svc", "target": "db"}},
+    {{"source": "payment_svc", "target": "db"}},
+    {{"source": "order_svc", "target": "db"}}
   ]
 }}
 '''
