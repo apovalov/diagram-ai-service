@@ -4,28 +4,34 @@ services:
   api:
     build:
       context: .
-      target: production  # Use multi-stage target
+      target: production
+      # Enable BuildKit for cache mounts
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     image: diagram-api-service:latest
     ports:
       - "8000:8000"
     volumes:
       - ./app:/app  # Mount source for development
       - /tmp/diagrams:/tmp/diagrams
-      - pip-cache:/root/.cache/pip  # Cache pip downloads
     env_file:
       - .env
     environment:
       - PYTHONPATH=/app
+      - DOCKER_BUILDKIT=1
 
   test:
-    image: diagram-api-service:latest
+    build:
+      context: .
+      target: test
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    image: diagram-api-service:test
     command: pytest
     volumes:
       - ./app:/app
       - ./tests:/app/tests
-      - pip-cache:/root/.cache/pip
     env_file:
       - .env
-
-volumes:
-  pip-cache:
+    environment:
+      - PYTHONPATH=/app
