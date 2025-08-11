@@ -4,9 +4,8 @@ from __future__ import annotations
 import os
 import shutil
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
-from pathlib import Path
-from typing import Generator
 
 from app.core.logging import get_logger
 
@@ -42,7 +41,7 @@ def cleanup_old_files(directory: str, max_age_hours: int = 24) -> int:
                         os.remove(file_path)
                         deleted_count += 1
                         logger.debug(f"Deleted old file: {file_path}")
-                except (OSError, IOError) as e:
+                except OSError as e:
                     logger.warning(f"Failed to delete file {file_path}: {e}")
 
             # Clean up empty directories
@@ -52,10 +51,10 @@ def cleanup_old_files(directory: str, max_age_hours: int = 24) -> int:
                     if not os.listdir(dir_path):  # Directory is empty
                         os.rmdir(dir_path)
                         logger.debug(f"Deleted empty directory: {dir_path}")
-                except (OSError, IOError):
+                except OSError:
                     pass  # Directory not empty or other issue
 
-    except (OSError, IOError) as e:
+    except OSError as e:
         logger.error(f"Error during cleanup of {directory}: {e}")
 
     if deleted_count > 0:
@@ -87,7 +86,7 @@ def cleanup_outputs_directory(tmp_dir: str, max_files: int = 100) -> int:
                 try:
                     mtime = os.path.getmtime(file_path)
                     files_with_times.append((file_path, mtime))
-                except (OSError, IOError):
+                except OSError:
                     continue
 
         # Sort by modification time (newest first)
@@ -100,7 +99,7 @@ def cleanup_outputs_directory(tmp_dir: str, max_files: int = 100) -> int:
                 os.remove(file_path)
                 deleted_count += 1
                 logger.debug(f"Deleted old output file: {file_path}")
-            except (OSError, IOError) as e:
+            except OSError as e:
                 logger.warning(f"Failed to delete file {file_path}: {e}")
 
         if deleted_count > 0:
@@ -108,7 +107,7 @@ def cleanup_outputs_directory(tmp_dir: str, max_files: int = 100) -> int:
 
         return deleted_count
 
-    except (OSError, IOError) as e:
+    except OSError as e:
         logger.error(f"Error during outputs cleanup: {e}")
         return 0
 

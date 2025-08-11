@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from app.core.config import settings
 from app.core.constants import (
-    IntentType,
-    GREETING_PHRASES,
     DIAGRAM_PHRASES,
+    GREETING_PHRASES,
     HELP_PHRASES,
+    IntentType,
 )
 from app.core.llm import client
-from app.core.schemas import IntentResult
 from app.core.prompts import intent_prompt
+from app.core.schemas import IntentResult
 
 __all__ = ["AssistantAgent"]
 

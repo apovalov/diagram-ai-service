@@ -14,7 +14,7 @@ class Timer:
         t.elapsed_s
     """
 
-    def __enter__(self) -> "Timer":
+    def __enter__(self) -> Timer:
         self._start = perf_counter()
         self.elapsed_s: float = 0.0
         return self

@@ -7,7 +7,12 @@ from app.core.config import Settings
 from app.core.constants import IntentType
 from app.core.llm import client
 from app.core.logging import get_logger
-from app.core.schemas import AssistantFinal, AssistantRequest, AssistantResponse, IntentResult
+from app.core.schemas import (
+    AssistantFinal,
+    AssistantRequest,
+    AssistantResponse,
+    IntentResult,
+)
 from app.services.diagram_service import DiagramService
 
 __all__ = ["AssistantService"]

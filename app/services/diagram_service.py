@@ -4,7 +4,6 @@ from __future__ import annotations
 import base64
 import os
 import shutil
-import tempfile
 import time
 import uuid
 from typing import Any
@@ -12,10 +11,10 @@ from typing import Any
 import anyio
 from diagrams import Cluster, Diagram
 from diagrams.aws.compute import EC2, Lambda
-from diagrams.aws.database import Dynamodb, RDS
+from diagrams.aws.database import RDS, Dynamodb
 from diagrams.aws.integration import SNS, SQS
 from diagrams.aws.management import Cloudwatch
-from diagrams.aws.network import ALB, APIGateway, InternetGateway, VPC
+from diagrams.aws.network import ALB, VPC, APIGateway, InternetGateway
 from diagrams.aws.security import Cognito
 from diagrams.aws.storage import S3
 from diagrams.generic.blank import Blank
@@ -23,8 +22,18 @@ from diagrams.generic.blank import Blank
 from app.agents.diagram_agent import DiagramAgent
 from app.core.config import Settings
 from app.core.logging import get_logger
-from app.core.schemas import AnalysisCluster, AnalysisConnection, AnalysisNode, DiagramAnalysis, Timing
-from app.utils.cleanup import cleanup_old_files, cleanup_outputs_directory, temp_file_manager
+from app.core.schemas import (
+    AnalysisCluster,
+    AnalysisConnection,
+    AnalysisNode,
+    DiagramAnalysis,
+    Timing,
+)
+from app.utils.cleanup import (
+    cleanup_old_files,
+    cleanup_outputs_directory,
+    temp_file_manager,
+)
 from app.utils.files import save_image_bytes
 from app.utils.timing import Timer
 
@@ -123,28 +132,21 @@ class DiagramService:
             logger.warning(f"Failed to cleanup old files: {e}")
 
     async def generate_diagram_from_description(self, description: str) -> tuple[str, dict[str, Any]]:
-        """Generate diagram from natural language description with end-to-end timing."""
-        with Timer() as total:
-            with Timer() as t_analysis:
-                analysis_result: DiagramAnalysis = await self.agent.generate_analysis(description)
-            with Timer() as t_render:
-                image_data, metadata = await anyio.to_thread.run_sync(
-                    self._generate_diagram_sync, analysis_result, description
-                )
-            try:
-                analysis_method = (
-                    "heuristic" if getattr(analysis_result, "title", "").lower().startswith("heuristic") else "llm"
-                )
-                metadata["analysis_method"] = analysis_method
-            except Exception:
-                pass
+        """Generate diagram from natural language description with critique-enhanced analysis.
 
-        metadata["timing"] = Timing(
-            analysis_s=t_analysis.elapsed_s,
-            render_s=t_render.elapsed_s,
-            total_s=total.elapsed_s,
-        ).model_dump()
-        return image_data, metadata
+        This method now uses the enhanced critique workflow internally while maintaining
+        backward compatibility for existing API consumers.
+        """
+        # Use the critique-enhanced generation workflow
+        (image_before, image_after), metadata = await self.generate_diagram_with_critique(description)
+
+        # Return the final image (after critique adjustments if available) or the original
+        final_image = image_after if image_after else image_before
+
+        # Add a flag to indicate if critique improvements were applied
+        metadata["critique_applied"] = image_after is not None
+
+        return final_image, metadata
 
     async def generate_diagram_with_critique(self, description: str) -> tuple[tuple[str, str | None], dict[str, Any]]:
         """Generate a diagram, run an image-based critique, optionally adjust and re-render.
@@ -367,3 +369,4 @@ class DiagramService:
 
         lines.append("}")
         return "\n".join(lines)
+

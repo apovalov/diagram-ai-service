@@ -2,23 +2,24 @@
 from __future__ import annotations
 
 import time
+
 from google.genai import types as genai_types
 
 from app.core.config import settings
 from app.core.constants import AWS_COMPONENTS
 from app.core.llm import client
 from app.core.logging import get_logger
+from app.core.prompts import (
+    diagram_adjustment_prompt,
+    diagram_analysis_prompt,
+    diagram_critique_prompt,
+)
 from app.core.schemas import (
     AnalysisCluster,
     AnalysisConnection,
     AnalysisNode,
     DiagramAnalysis,
     DiagramCritique,
-)
-from app.core.prompts import (
-    diagram_adjustment_prompt,
-    diagram_analysis_prompt,
-    diagram_critique_prompt,
 )
 
 __all__ = ["DiagramAgent"]
