@@ -34,13 +34,16 @@ uv sync
 
 # 3) Configure env
 cp .env.example .env
+
 # Option A: real LLM with critique (best quality)
 # GEMINI_API_KEY=your_key
 # USE_CRITIQUE_GENERATION=true
 # CRITIQUE_MAX_ATTEMPTS=3
+
 # Option B: real LLM without critique (faster)
 # GEMINI_API_KEY=your_key
 # USE_CRITIQUE_GENERATION=false
+
 # Option C: local dev/testing
 # MOCK_LLM=true
 
