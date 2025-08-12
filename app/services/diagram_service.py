@@ -176,19 +176,41 @@ class DiagramService:
                 before_path = None
                 logger.warning(f"Failed to save pre-critique image: {e}")
 
-            # Critique using the rendered image
-            try:
-                image_bytes = base64.b64decode(image_before_b64)
-                critique = await self.agent.critique_analysis(
-                    description=description, analysis=analysis, image_bytes=image_bytes
-                )
-            except Exception as e:
-                logger.warning(
-                    "Critique step failed, continuing without adjustments: %s",
-                    e,
-                    exc_info=True,
-                )
-                critique = None
+            # Critique using the rendered image - retry multiple times for better critique quality
+            critique = None
+            image_bytes = base64.b64decode(image_before_b64)
+            max_critique_attempts = max(1, min(5, self.settings.critique_max_attempts))  # Clamp between 1-5
+            
+            for attempt in range(1, max_critique_attempts + 1):
+                try:
+                    logger.info(f"Attempting critique generation (attempt {attempt}/{max_critique_attempts})")
+                    critique = await self.agent.critique_analysis(
+                        description=description, analysis=analysis, image_bytes=image_bytes
+                    )
+                    # If we got a critique with actual feedback, use it
+                    if critique and not critique.done and critique.critique:
+                        logger.info(f"Critique received on attempt {attempt}: {len(critique.critique)} characters")
+                        metadata["critique_attempts"] = attempt
+                        break
+                    # If critique says it's done (no improvements needed), that's also valid
+                    elif critique and critique.done:
+                        logger.info(f"Critique completed on attempt {attempt}: no improvements needed")
+                        metadata["critique_attempts"] = attempt
+                        break
+                    else:
+                        logger.info(f"Critique attempt {attempt} returned no feedback, trying again...")
+                        critique = None
+                except Exception as e:
+                    logger.warning(
+                        f"Critique attempt {attempt}/{max_critique_attempts} failed: %s",
+                        e,
+                        exc_info=True if attempt == max_critique_attempts else False,
+                    )
+                    critique = None
+                    
+            if not critique:
+                logger.warning("All critique attempts failed, continuing without adjustments")
+                metadata["critique_attempts"] = max_critique_attempts
 
             image_after_b64: str | None = None
             if critique and not critique.done and critique.critique:

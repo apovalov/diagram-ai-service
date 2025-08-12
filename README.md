@@ -8,6 +8,7 @@ Generate AWS architecture diagrams from natural‑language descriptions using an
 
 - **/api/v1/generate-diagram** — turns a plain‑text description into a PNG diagram (base64 in the response) and saves a copy under `/tmp/diagrams/outputs`.
 - **/api/v1/assistant** — bonus assistant endpoint that detects intent and (when helpful) triggers diagram generation.
+- **Critique-enhanced generation** — optionally analyzes generated diagrams and applies improvements for better quality (with configurable retry attempts).
 - Built for **stateless** use; no DB. Temporary files are auto‑cleaned.
 
 ---
@@ -33,9 +34,14 @@ uv sync
 
 # 3) Configure env
 cp .env.example .env
-# Option A: real LLM
+# Option A: real LLM with critique (best quality)
 # GEMINI_API_KEY=your_key
-# Option B: local dev
+# USE_CRITIQUE_GENERATION=true
+# CRITIQUE_MAX_ATTEMPTS=3
+# Option B: real LLM without critique (faster)
+# GEMINI_API_KEY=your_key
+# USE_CRITIQUE_GENERATION=false
+# Option C: local dev/testing
 # MOCK_LLM=true
 
 # 4) Run the API
@@ -60,13 +66,36 @@ docker-compose up
 
 ## Configuration (.env)
 
-| Key              | Default            | Description                                                           |
-| ---------------- | ------------------ | --------------------------------------------------------------------- |
-| `GEMINI_API_KEY` | —                  | API key for Gemini (Developer API)                                    |
-| `GEMINI_MODEL`   | `gemini-2.5-flash` | Model name                                                            |
-| `MOCK_LLM`       | `false`            | If `true`, use deterministic mock analysis (no external calls)        |
-| `TMP_DIR`        | `/tmp/diagrams`    | Where images/DOT files are written                                    |
-| `USE_VERTEX_AI`  | `false`            | Use Vertex AI (needs `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`) |
+| Key                      | Default            | Description                                                           |
+| ------------------------ | ------------------ | --------------------------------------------------------------------- |
+| `GEMINI_API_KEY`         | —                  | API key for Gemini (Developer API)                                    |
+| `GEMINI_MODEL`           | `gemini-2.5-flash` | Model name                                                            |
+| `GEMINI_TIMEOUT`         | `60`               | Request timeout in seconds for LLM calls                              |
+| `GEMINI_TEMPERATURE`     | `0.1`              | Temperature for LLM generation (0.0-2.0, lower = more deterministic) |
+| `USE_CRITIQUE_GENERATION`| `true`             | Enable critique-enhanced diagram generation for improved quality       |
+| `CRITIQUE_MAX_ATTEMPTS`  | `3`                | Maximum critique attempts for better quality (1-5)                    |
+| `MOCK_LLM`               | `false`            | If `true`, use deterministic mock analysis (no external calls)        |
+| `TMP_DIR`                | `/tmp/diagrams`    | Where images/DOT files are written                                    |
+| `USE_VERTEX_AI`          | `false`            | Use Vertex AI (needs `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`) |
+
+---
+
+## Critique-Enhanced Generation
+
+When `USE_CRITIQUE_GENERATION=true` (default), the service uses an advanced workflow:
+
+1. **Generate** initial diagram from description
+2. **Critique** the rendered image using AI vision analysis  
+3. **Retry** critique up to `CRITIQUE_MAX_ATTEMPTS` times for better feedback
+4. **Adjust** and re-render if improvements are suggested
+5. **Return** the improved diagram (or original if no improvements needed)
+
+**Quality vs Speed Trade-offs:**
+- `CRITIQUE_MAX_ATTEMPTS=1` — faster, single attempt
+- `CRITIQUE_MAX_ATTEMPTS=3` — balanced (default)
+- `CRITIQUE_MAX_ATTEMPTS=5` — maximum quality, slower
+
+The `critique_attempts` metadata field shows how many attempts were actually used.
 
 ---
 
@@ -95,7 +124,11 @@ docker-compose up
     "connections_made": 8,
     "generation_time": 0.42,
     "timing": {"analysis_s": 0.12, "render_s": 0.30, "total_s": 0.43},
-    "analysis_method": "llm|heuristic"
+    "analysis_method": "llm|heuristic",
+    "critique_applied": true,
+    "critique": {"done": false, "critique": "Consider adding..."},
+    "critique_attempts": 2,
+    "adjust_render_s": 0.08
   }
 }
 ```
@@ -233,9 +266,12 @@ curl -s -X POST "http://localhost:8000/api/v1/generate-diagram" \
 
 ## 📝 Notes & limitations
 
-- Uses a **canonical supportet components** set of AWS nodes to keep results consistent and readable.
+- Uses a **canonical supported components** set of AWS nodes to keep results consistent and readable.
 - When an unsupported service is mentioned, it maps to a close canonical type (e.g., "database" → `rds`, business services → `service`).
 - Each node can belong to **one cluster** at most; we prioritize **functional** groupings.
+- **Critique generation** analyzes diagrams and applies improvements with configurable retry attempts for higher success rates.
+- **LLM timeouts** are configurable; adjust `GEMINI_TIMEOUT` based on your network and complexity needs.
+- **Critique retries** improve quality but increase processing time; tune `CRITIQUE_MAX_ATTEMPTS` for your use case.
 - If the LLM is unavailable, a **heuristic fallback** still renders a sensible diagram.
 - Layout is automatic; complex meshes may need manual post‑tweaks.
 

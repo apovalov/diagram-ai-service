@@ -94,10 +94,14 @@ def test_settings_resolution(mock_settings):
 @pytest.mark.asyncio
 async def test_diagram_generation_thread_pool():
     """Test that diagram generation runs in thread pool."""
+    import base64
+    # Create valid base64 test data
+    test_image_b64 = base64.b64encode(b"fake_image_data").decode()
+    
     with patch("anyio.to_thread.run_sync") as mock_run_sync:
-        mock_run_sync.return_value = ("test_image", {"nodes_created": 1})
+        mock_run_sync.return_value = (test_image_b64, {"nodes_created": 1})
 
-        settings = Settings(gemini_api_key="test_key", tmp_dir="/tmp/test")
+        settings = Settings(gemini_api_key="test_key", tmp_dir="/tmp/test", use_critique_generation=False)
         service = DiagramService(settings)
 
         # Mock the agent analysis

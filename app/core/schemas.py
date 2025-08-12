@@ -34,6 +34,7 @@ class DiagramMetadata(BaseModel):
     analysis_method: str | None = None
     critique_applied: bool = False
     critique: dict | None = None
+    critique_attempts: int | None = None
     adjust_render_s: float | None = None
 
 

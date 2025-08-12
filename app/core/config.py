@@ -39,6 +39,10 @@ class Settings(BaseSettings):
         default=True,
         description="If true, use critique-enhanced diagram generation; otherwise use standard generation",
     )
+    critique_max_attempts: int = Field(
+        default=3,
+        description="Maximum number of attempts for critique generation (1-5)",
+    )
     google_cloud_project: str = Field(
         default="", description="Google Cloud Project ID for Vertex AI"
     )
