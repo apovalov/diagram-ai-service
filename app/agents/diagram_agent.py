@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 
 from google.genai import types as genai_types
@@ -32,6 +33,24 @@ class DiagramAgent:
     def __init__(self) -> None:
         self.logger = get_logger(__name__)
 
+    async def _retry_with_backoff(self, operation_name: str, max_attempts: int, operation_func):
+        """Retry an operation with exponential backoff and jitter."""
+        for attempt in range(max_attempts):
+            try:
+                result = await operation_func()
+                return result
+            except Exception as e:
+                is_last_attempt = attempt == max_attempts - 1
+                if is_last_attempt:
+                    self.logger.error(f"{operation_name} failed after {max_attempts} attempts: {e}")
+                    raise
+                # Calculate backoff with exponential growth and jitter
+                backoff_time = min(
+                    settings.retry_backoff_base * (2 ** attempt),
+                    settings.retry_backoff_max
+                ) + random.uniform(0, settings.retry_jitter)
+                await asyncio.sleep(backoff_time)
+
     async def generate_analysis(self, description: str) -> DiagramAnalysis:
         """Generate diagram component analysis from description."""
         if settings.mock_llm:
@@ -49,8 +68,9 @@ class DiagramAgent:
                 ],
             )
 
-        prompt = diagram_analysis_prompt(description)
-        try:
+        async def _perform_analysis():
+            prompt = diagram_analysis_prompt(description)
+
             start = time.monotonic()
             self.logger.info(
                 "Requesting LLM analysis (model=%s, desc_len=%d)",
@@ -70,6 +90,7 @@ class DiagramAgent:
                 timeout=settings.gemini_timeout,
             )
             elapsed_ms = int((time.monotonic() - start) * 1000)
+
             if getattr(response, "parsed", None):
                 try:
                     node_count = len(response.parsed.nodes)
@@ -77,6 +98,7 @@ class DiagramAgent:
                     cluster_count = len(response.parsed.clusters)
                 except Exception:
                     node_count = conn_count = cluster_count = -1
+
                 self.logger.info(
                     "LLM analysis parsed successfully in %d ms (nodes=%s, conns=%s, clusters=%s)",
                     elapsed_ms,
@@ -108,8 +130,15 @@ class DiagramAgent:
                     preview,
                 )
                 raise ValueError("Failed to parse LLM response as JSON.")
+
+        try:
+            return await self._retry_with_backoff(
+                "analysis",
+                settings.analysis_max_attempts,
+                _perform_analysis
+            )
         except Exception as e:
-            self.logger.exception("LLM analysis failed; using heuristic fallback: %s", e)
+            self.logger.exception("LLM analysis failed after retries; using heuristic fallback: %s", e)
             return self._heuristic_analysis(description)
 
     async def critique_analysis(self, description: str, analysis: DiagramAnalysis, image_bytes: bytes) -> DiagramCritique:
@@ -117,6 +146,7 @@ class DiagramAgent:
             return DiagramCritique(done=True, critique=None)
 
         prompt = diagram_critique_prompt(description)
+
         response = await asyncio.wait_for(
             client.aio.models.generate_content(
                 model=settings.gemini_model,
@@ -133,6 +163,7 @@ class DiagramAgent:
             ),
             timeout=settings.gemini_timeout,
         )
+
         if getattr(response, "parsed", None):
             return response.parsed
         raise ValueError("Failed to parse critique as JSON.")
@@ -141,22 +172,31 @@ class DiagramAgent:
         if settings.mock_llm:
             return analysis
 
-        prompt = diagram_adjustment_prompt(description, critique)
-        response = await asyncio.wait_for(
-            client.aio.models.generate_content(
-                model=settings.gemini_model,
-                contents=[prompt, analysis.model_dump_json()],
-                config={
-                    "response_mime_type": "application/json",
-                    "response_schema": DiagramAnalysis,
-                    "temperature": settings.gemini_temperature,
-                },
-            ),
-            timeout=settings.gemini_timeout,
+        async def _perform_adjust():
+            prompt = diagram_adjustment_prompt(description, critique)
+
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=settings.gemini_model,
+                    contents=[prompt, analysis.model_dump_json()],
+                    config={
+                        "response_mime_type": "application/json",
+                        "response_schema": DiagramAnalysis,
+                        "temperature": settings.gemini_temperature,
+                    },
+                ),
+                timeout=settings.gemini_timeout,
+            )
+
+            if getattr(response, "parsed", None):
+                return response.parsed
+            raise ValueError("Failed to parse adjusted analysis as JSON.")
+
+        return await self._retry_with_backoff(
+            "adjust",
+            settings.adjust_max_attempts,
+            _perform_adjust
         )
-        if getattr(response, "parsed", None):
-            return response.parsed
-        raise ValueError("Failed to parse adjusted analysis as JSON.")
 
     # -------------------- heuristic fallback --------------------
 

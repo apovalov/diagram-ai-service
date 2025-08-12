@@ -43,6 +43,21 @@ class Settings(BaseSettings):
         default=3,
         description="Maximum number of attempts for critique generation (1-5)",
     )
+    analysis_max_attempts: int = Field(
+        default=2, description="Retries for analysis"
+    )
+    adjust_max_attempts: int = Field(
+        default=2, description="Retries for adjust"
+    )
+    retry_backoff_base: float = Field(
+        default=0.5, description="Exponential backoff base (s)"
+    )
+    retry_backoff_max: float = Field(
+        default=4.0, description="Backoff cap (s)"
+    )
+    retry_jitter: float = Field(
+        default=0.25, description="Jitter (s)"
+    )
     google_cloud_project: str = Field(
         default="", description="Google Cloud Project ID for Vertex AI"
     )

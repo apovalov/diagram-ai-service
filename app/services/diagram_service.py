@@ -157,13 +157,18 @@ class DiagramService:
 
         Returns ((image_before_b64, image_after_b64_or_none), metadata)
         """
+
+
         with Timer() as total:
             with Timer() as t_analysis:
                 analysis: DiagramAnalysis = await self.agent.generate_analysis(description)
+
+
             with Timer() as t_render1:
                 image_before_b64, metadata = await anyio.to_thread.run_sync(
                     self._generate_diagram_sync, analysis, description
                 )
+
 
             # Persist initial image and log the path
             try:
@@ -177,10 +182,14 @@ class DiagramService:
                 logger.warning(f"Failed to save pre-critique image: {e}")
 
             # Critique using the rendered image - retry multiple times for better critique quality
+
+
             critique = None
             image_bytes = base64.b64decode(image_before_b64)
             max_critique_attempts = max(1, min(5, self.settings.critique_max_attempts))  # Clamp between 1-5
-            
+
+
+
             for attempt in range(1, max_critique_attempts + 1):
                 try:
                     logger.info(f"Attempting critique generation (attempt {attempt}/{max_critique_attempts})")
@@ -207,31 +216,42 @@ class DiagramService:
                         exc_info=True if attempt == max_critique_attempts else False,
                     )
                     critique = None
-                    
+
             if not critique:
                 logger.warning("All critique attempts failed, continuing without adjustments")
                 metadata["critique_attempts"] = max_critique_attempts
 
             image_after_b64: str | None = None
             if critique and not critique.done and critique.critique:
+
+
                 with Timer() as t_adjust_render:
                     updated: DiagramAnalysis = await self.agent.adjust_analysis(
                         description=description,
                         analysis=analysis,
                         critique=critique.critique,
                     )
+
+
                     image_after_b64, metadata_after = await anyio.to_thread.run_sync(
                         self._generate_diagram_sync, updated, description
                     )
+
+
                 metadata.update(metadata_after)
                 metadata["critique"] = critique.model_dump()
                 metadata["adjust_render_s"] = t_adjust_render.elapsed_s
+            else:
+                pass
 
         metadata["timing"] = Timing(
             analysis_s=t_analysis.elapsed_s,
             render_s=t_render1.elapsed_s,
             total_s=total.elapsed_s,
         ).model_dump()
+
+
+
         return (image_before_b64, image_after_b64), metadata
 
     async def _generate_diagram_standard(self, description: str) -> tuple[str, dict[str, Any]]:
