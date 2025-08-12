@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     gemini_model: str = Field(
         default="gemini-2.5-flash", description="Gemini model name"
     )
+    gemini_timeout: int = Field(
+        default=60, description="Timeout in seconds for LLM requests"
+    )
+    gemini_temperature: float = Field(
+        default=0.1, description="Temperature parameter for LLM generation (0.0-2.0)"
+    )
     tmp_dir: str = Field(
         default="/tmp/diagrams", description="Temporary directory for diagram files"
     )
@@ -28,6 +34,10 @@ class Settings(BaseSettings):
     mock_llm: bool = Field(
         default=False,
         description="If true, avoid external LLM calls and use deterministic local mocks",
+    )
+    use_critique_generation: bool = Field(
+        default=True,
+        description="If true, use critique-enhanced diagram generation; otherwise use standard generation",
     )
     google_cloud_project: str = Field(
         default="", description="Google Cloud Project ID for Vertex AI"

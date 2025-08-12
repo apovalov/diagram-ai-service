@@ -132,21 +132,25 @@ class DiagramService:
             logger.warning(f"Failed to cleanup old files: {e}")
 
     async def generate_diagram_from_description(self, description: str) -> tuple[str, dict[str, Any]]:
-        """Generate diagram from natural language description with critique-enhanced analysis.
+        """Generate diagram from natural language description.
 
-        This method now uses the enhanced critique workflow internally while maintaining
-        backward compatibility for existing API consumers.
+        Uses critique-enhanced generation if settings.use_critique_generation is True,
+        otherwise uses the standard generation workflow.
         """
-        # Use the critique-enhanced generation workflow
-        (image_before, image_after), metadata = await self.generate_diagram_with_critique(description)
+        if self.settings.use_critique_generation:
+            # Use the critique-enhanced generation workflow
+            (image_before, image_after), metadata = await self.generate_diagram_with_critique(description)
 
-        # Return the final image (after critique adjustments if available) or the original
-        final_image = image_after if image_after else image_before
+            # Return the final image (after critique adjustments if available) or the original
+            final_image = image_after if image_after else image_before
 
-        # Add a flag to indicate if critique improvements were applied
-        metadata["critique_applied"] = image_after is not None
+            # Add a flag to indicate if critique improvements were applied
+            metadata["critique_applied"] = image_after is not None
 
-        return final_image, metadata
+            return final_image, metadata
+        else:
+            # Use the standard generation workflow (original implementation)
+            return await self._generate_diagram_standard(description)
 
     async def generate_diagram_with_critique(self, description: str) -> tuple[tuple[str, str | None], dict[str, Any]]:
         """Generate a diagram, run an image-based critique, optionally adjust and re-render.
@@ -207,6 +211,31 @@ class DiagramService:
             total_s=total.elapsed_s,
         ).model_dump()
         return (image_before_b64, image_after_b64), metadata
+
+    async def _generate_diagram_standard(self, description: str) -> tuple[str, dict[str, Any]]:
+        """Generate diagram from natural language description with standard workflow (no critique)."""
+        with Timer() as total:
+            with Timer() as t_analysis:
+                analysis_result: DiagramAnalysis = await self.agent.generate_analysis(description)
+            with Timer() as t_render:
+                image_data, metadata = await anyio.to_thread.run_sync(
+                    self._generate_diagram_sync, analysis_result, description
+                )
+            try:
+                analysis_method = (
+                    "heuristic" if getattr(analysis_result, "title", "").lower().startswith("heuristic") else "llm"
+                )
+                metadata["analysis_method"] = analysis_method
+            except Exception:
+                pass
+
+        metadata["timing"] = Timing(
+            analysis_s=t_analysis.elapsed_s,
+            render_s=t_render.elapsed_s,
+            total_s=total.elapsed_s,
+        ).model_dump()
+        metadata["critique_applied"] = False
+        return image_data, metadata
 
     # -------------------- internal helpers --------------------
 

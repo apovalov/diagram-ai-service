@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from google.genai import types as genai_types
 
 from app.agents.assistant_agent import AssistantAgent
@@ -127,15 +129,19 @@ class AssistantService:
 
         for _ in range(3):
             try:
-                resp = await client.aio.models.generate_content(
-                    model=self.settings.gemini_model,
-                    contents=contents,
-                    config=genai_types.GenerateContentConfig(
-                        tools=[tool],
-                        tool_config=tool_config,
-                        response_mime_type="application/json",
-                        response_schema=AssistantFinal,
+                resp = await asyncio.wait_for(
+                    client.aio.models.generate_content(
+                        model=self.settings.gemini_model,
+                        contents=contents,
+                        config=genai_types.GenerateContentConfig(
+                            tools=[tool],
+                            tool_config=tool_config,
+                            response_mime_type="application/json",
+                            response_schema=AssistantFinal,
+                            temperature=self.settings.gemini_temperature,
+                        ),
                     ),
+                    timeout=self.settings.gemini_timeout,
                 )
             except Exception as e:
                 logger.warning(

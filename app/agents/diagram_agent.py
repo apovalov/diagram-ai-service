@@ -1,6 +1,7 @@
 # diagram_agent.py
 from __future__ import annotations
 
+import asyncio
 import time
 
 from google.genai import types as genai_types
@@ -56,13 +57,17 @@ class DiagramAgent:
                 settings.gemini_model,
                 len(description or ""),
             )
-            response = await client.aio.models.generate_content(
-                model=settings.gemini_model,
-                contents=prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_schema": DiagramAnalysis,
-                },
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=settings.gemini_model,
+                    contents=prompt,
+                    config={
+                        "response_mime_type": "application/json",
+                        "response_schema": DiagramAnalysis,
+                        "temperature": settings.gemini_temperature,
+                    },
+                ),
+                timeout=settings.gemini_timeout,
             )
             elapsed_ms = int((time.monotonic() - start) * 1000)
             if getattr(response, "parsed", None):
@@ -112,17 +117,21 @@ class DiagramAgent:
             return DiagramCritique(done=True, critique=None)
 
         prompt = diagram_critique_prompt(description)
-        response = await client.aio.models.generate_content(
-            model=settings.gemini_model,
-            contents=[
-                prompt,
-                genai_types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
-                genai_types.Part.from_text(text=analysis.model_dump_json()),
-            ],
-            config={
-                "response_mime_type": "application/json",
-                "response_schema": DiagramCritique,
-            },
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=settings.gemini_model,
+                contents=[
+                    prompt,
+                    genai_types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+                    genai_types.Part.from_text(text=analysis.model_dump_json()),
+                ],
+                config={
+                    "response_mime_type": "application/json",
+                    "response_schema": DiagramCritique,
+                    "temperature": settings.gemini_temperature,
+                },
+            ),
+            timeout=settings.gemini_timeout,
         )
         if getattr(response, "parsed", None):
             return response.parsed
@@ -133,13 +142,17 @@ class DiagramAgent:
             return analysis
 
         prompt = diagram_adjustment_prompt(description, critique)
-        response = await client.aio.models.generate_content(
-            model=settings.gemini_model,
-            contents=[prompt, analysis.model_dump_json()],
-            config={
-                "response_mime_type": "application/json",
-                "response_schema": DiagramAnalysis,
-            },
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=settings.gemini_model,
+                contents=[prompt, analysis.model_dump_json()],
+                config={
+                    "response_mime_type": "application/json",
+                    "response_schema": DiagramAnalysis,
+                    "temperature": settings.gemini_temperature,
+                },
+            ),
+            timeout=settings.gemini_timeout,
         )
         if getattr(response, "parsed", None):
             return response.parsed

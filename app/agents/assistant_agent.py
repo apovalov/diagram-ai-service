@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from app.core.config import settings
 from app.core.constants import (
     DIAGRAM_PHRASES,
@@ -44,13 +46,17 @@ class AssistantAgent:
 
         prompt = intent_prompt(message + context_str)
         try:
-            response = await client.aio.models.generate_content(
-                model=settings.gemini_model,
-                contents=prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_schema": IntentResult,
-                },
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=settings.gemini_model,
+                    contents=prompt,
+                    config={
+                        "response_mime_type": "application/json",
+                        "response_schema": IntentResult,
+                        "temperature": settings.gemini_temperature,
+                    },
+                ),
+                timeout=settings.gemini_timeout,
             )
             if getattr(response, "parsed", None):
                 return response.parsed

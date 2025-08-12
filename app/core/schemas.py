@@ -32,7 +32,7 @@ class DiagramMetadata(BaseModel):
     generation_time: float
     timing: Timing | None = None
     analysis_method: str | None = None
-    critique_applied: bool | None = None
+    critique_applied: bool = False
     critique: dict | None = None
     adjust_render_s: float | None = None
 
