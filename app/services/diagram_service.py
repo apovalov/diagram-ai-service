@@ -54,26 +54,21 @@ NODE_MAP: dict[str, type] = {
     # Compute
     "ec2": EC2,
     "lambda": Lambda,
-
     # Database & Storage
     "rds": RDS,
     "dynamodb": Dynamodb,
     "s3": S3,
-
     # Networking & Routing
     "alb": ALB,
     "api_gateway": APIGateway,
     "vpc": VPC,
     "internet_gateway": InternetGateway,
-
     # Integration
     "sqs": SQS,
     "sns": SNS,
-
     # Observability & Identity
     "cloudwatch": Cloudwatch,
     "cognito": Cognito,
-
     # Generic microservice
     "service": EC2,  # use EC2 icon as a neutral microservice box
 }
@@ -131,7 +126,9 @@ class DiagramService:
         except Exception as e:
             logger.warning(f"Failed to cleanup old files: {e}")
 
-    async def generate_diagram_from_description(self, description: str) -> tuple[str, dict[str, Any]]:
+    async def generate_diagram_from_description(
+        self, description: str
+    ) -> tuple[str, dict[str, Any]]:
         """Generate diagram from natural language description.
 
         Uses critique-enhanced generation if settings.use_critique_generation is True,
@@ -139,7 +136,10 @@ class DiagramService:
         """
         if self.settings.use_critique_generation:
             # Use the critique-enhanced generation workflow
-            (image_before, image_after), metadata = await self.generate_diagram_with_critique(description)
+            (
+                (image_before, image_after),
+                metadata,
+            ) = await self.generate_diagram_with_critique(description)
 
             # Return the final image (after critique adjustments if available) or the original
             final_image = image_after if image_after else image_before
@@ -152,23 +152,24 @@ class DiagramService:
             # Use the standard generation workflow (original implementation)
             return await self._generate_diagram_standard(description)
 
-    async def generate_diagram_with_critique(self, description: str) -> tuple[tuple[str, str | None], dict[str, Any]]:
+    async def generate_diagram_with_critique(
+        self, description: str
+    ) -> tuple[tuple[str, str | None], dict[str, Any]]:
         """Generate a diagram, run an image-based critique, optionally adjust and re-render.
 
         Returns ((image_before_b64, image_after_b64_or_none), metadata)
         """
 
-
         with Timer() as total:
             with Timer() as t_analysis:
-                analysis: DiagramAnalysis = await self.agent.generate_analysis(description)
-
+                analysis: DiagramAnalysis = await self.agent.generate_analysis(
+                    description
+                )
 
             with Timer() as t_render1:
                 image_before_b64, metadata = await anyio.to_thread.run_sync(
                     self._generate_diagram_sync, analysis, description
                 )
-
 
             # Persist initial image and log the path
             try:
@@ -183,31 +184,40 @@ class DiagramService:
 
             # Critique using the rendered image - retry multiple times for better critique quality
 
-
             critique = None
             image_bytes = base64.b64decode(image_before_b64)
-            max_critique_attempts = max(1, min(5, self.settings.critique_max_attempts))  # Clamp between 1-5
-
-
+            max_critique_attempts = max(
+                1, min(5, self.settings.critique_max_attempts)
+            )  # Clamp between 1-5
 
             for attempt in range(1, max_critique_attempts + 1):
                 try:
-                    logger.info(f"Attempting critique generation (attempt {attempt}/{max_critique_attempts})")
+                    logger.info(
+                        f"Attempting critique generation (attempt {attempt}/{max_critique_attempts})"
+                    )
                     critique = await self.agent.critique_analysis(
-                        description=description, analysis=analysis, image_bytes=image_bytes
+                        description=description,
+                        analysis=analysis,
+                        image_bytes=image_bytes,
                     )
                     # If we got a critique with actual feedback, use it
                     if critique and not critique.done and critique.critique:
-                        logger.info(f"Critique received on attempt {attempt}: {len(critique.critique)} characters")
+                        logger.info(
+                            f"Critique received on attempt {attempt}: {len(critique.critique)} characters"
+                        )
                         metadata["critique_attempts"] = attempt
                         break
                     # If critique says it's done (no improvements needed), that's also valid
                     elif critique and critique.done:
-                        logger.info(f"Critique completed on attempt {attempt}: no improvements needed")
+                        logger.info(
+                            f"Critique completed on attempt {attempt}: no improvements needed"
+                        )
                         metadata["critique_attempts"] = attempt
                         break
                     else:
-                        logger.info(f"Critique attempt {attempt} returned no feedback, trying again...")
+                        logger.info(
+                            f"Critique attempt {attempt} returned no feedback, trying again..."
+                        )
                         critique = None
                 except Exception as e:
                     logger.warning(
@@ -218,13 +228,13 @@ class DiagramService:
                     critique = None
 
             if not critique:
-                logger.warning("All critique attempts failed, continuing without adjustments")
+                logger.warning(
+                    "All critique attempts failed, continuing without adjustments"
+                )
                 metadata["critique_attempts"] = max_critique_attempts
 
             image_after_b64: str | None = None
             if critique and not critique.done and critique.critique:
-
-
                 with Timer() as t_adjust_render:
                     updated: DiagramAnalysis = await self.agent.adjust_analysis(
                         description=description,
@@ -232,11 +242,9 @@ class DiagramService:
                         critique=critique.critique,
                     )
 
-
                     image_after_b64, metadata_after = await anyio.to_thread.run_sync(
                         self._generate_diagram_sync, updated, description
                     )
-
 
                 metadata.update(metadata_after)
                 metadata["critique"] = critique.model_dump()
@@ -250,22 +258,28 @@ class DiagramService:
             total_s=total.elapsed_s,
         ).model_dump()
 
-
-
         return (image_before_b64, image_after_b64), metadata
 
-    async def _generate_diagram_standard(self, description: str) -> tuple[str, dict[str, Any]]:
+    async def _generate_diagram_standard(
+        self, description: str
+    ) -> tuple[str, dict[str, Any]]:
         """Generate diagram from natural language description with standard workflow (no critique)."""
         with Timer() as total:
             with Timer() as t_analysis:
-                analysis_result: DiagramAnalysis = await self.agent.generate_analysis(description)
+                analysis_result: DiagramAnalysis = await self.agent.generate_analysis(
+                    description
+                )
             with Timer() as t_render:
                 image_data, metadata = await anyio.to_thread.run_sync(
                     self._generate_diagram_sync, analysis_result, description
                 )
             try:
                 analysis_method = (
-                    "heuristic" if getattr(analysis_result, "title", "").lower().startswith("heuristic") else "llm"
+                    "heuristic"
+                    if getattr(analysis_result, "title", "")
+                    .lower()
+                    .startswith("heuristic")
+                    else "llm"
                 )
                 metadata["analysis_method"] = analysis_method
             except Exception:
@@ -281,7 +295,9 @@ class DiagramService:
 
     # -------------------- internal helpers --------------------
 
-    def _normalize_analysis(self, analysis: DiagramAnalysis, *, strict: bool = True) -> DiagramAnalysis:
+    def _normalize_analysis(
+        self, analysis: DiagramAnalysis, *, strict: bool = True
+    ) -> DiagramAnalysis:
         """Return a new DiagramAnalysis with canonicalized types, validated edges/clusters, and sane defaults."""
         seen_ids: set[str] = set()
         nodes_out: list[AnalysisNode] = []
@@ -314,20 +330,30 @@ class DiagramService:
             if c.source in id_set and c.target in id_set and c.source != c.target:
                 conns_out.append(AnalysisConnection(source=c.source, target=c.target))
             else:
-                logger.debug("Dropping invalid connection: %s -> %s", c.source, c.target)
+                logger.debug(
+                    "Dropping invalid connection: %s -> %s", c.source, c.target
+                )
 
         # Clusters: keep only existing node ids, drop empty clusters
         clusters_out: list[AnalysisCluster] = []
         for cl in analysis.clusters:
             nodes_filtered = [nid for nid in cl.nodes if nid in id_set]
             if nodes_filtered:
-                clusters_out.append(AnalysisCluster(label=cl.label, nodes=nodes_filtered))
+                clusters_out.append(
+                    AnalysisCluster(label=cl.label, nodes=nodes_filtered)
+                )
 
-        title = (analysis.title or "Application Diagram").strip() or "Application Diagram"
+        title = (
+            analysis.title or "Application Diagram"
+        ).strip() or "Application Diagram"
 
-        return DiagramAnalysis(title=title, nodes=nodes_out, clusters=clusters_out, connections=conns_out)
+        return DiagramAnalysis(
+            title=title, nodes=nodes_out, clusters=clusters_out, connections=conns_out
+        )
 
-    def _generate_diagram_sync(self, analysis_result: DiagramAnalysis, description: str) -> tuple[str, dict[str, Any]]:
+    def _generate_diagram_sync(
+        self, analysis_result: DiagramAnalysis, description: str
+    ) -> tuple[str, dict[str, Any]]:
         """Synchronous diagram generation (runs in thread pool)."""
         with temp_file_manager(self.temp_dir) as workdir:
             diagram_path = os.path.join(workdir, "diagram")
@@ -347,13 +373,19 @@ class DiagramService:
                 for cluster_info in sorted(normalized.clusters, key=lambda c: c.label):
                     with Cluster(cluster_info.label):
                         for node_id in sorted(cluster_info.nodes):
-                            node_details = next((n for n in normalized.nodes if n.id == node_id), None)
+                            node_details = next(
+                                (n for n in normalized.nodes if n.id == node_id), None
+                            )
                             if node_details:
                                 node_class = NODE_MAP.get(node_details.type)
-                                nodes[node_id] = (node_class or Blank)(node_details.label)
+                                nodes[node_id] = (node_class or Blank)(
+                                    node_details.label
+                                )
 
                 # Standalone nodes
-                clustered_node_ids = {nid for c in normalized.clusters for nid in c.nodes}
+                clustered_node_ids = {
+                    nid for c in normalized.clusters for nid in c.nodes
+                }
                 for node_details in sorted(normalized.nodes, key=lambda n: n.id):
                     if node_details.id in clustered_node_ids:
                         continue
@@ -361,7 +393,9 @@ class DiagramService:
                     nodes[node_details.id] = (node_class or Blank)(node_details.label)
 
                 # Connections
-                for conn in sorted(normalized.connections, key=lambda c: (c.source, c.target)):
+                for conn in sorted(
+                    normalized.connections, key=lambda c: (c.source, c.target)
+                ):
                     src = nodes.get(conn.source)
                     dst = nodes.get(conn.target)
                     if src and dst:
@@ -379,13 +413,17 @@ class DiagramService:
             # Persist DOT (either produced by diagrams or synthesized from normalized analysis)
             dot_path = f"{diagram_path}.dot"
             if os.path.exists(dot_path):
-                out = os.path.join(self.settings.tmp_dir, "outputs", f"{uuid.uuid4()}.dot")
+                out = os.path.join(
+                    self.settings.tmp_dir, "outputs", f"{uuid.uuid4()}.dot"
+                )
                 os.makedirs(os.path.dirname(out), exist_ok=True)
                 shutil.copyfile(dot_path, out)
                 logger.info("DOT saved: %s", out)
             else:
                 synthesized_dot = self._build_dot_from_analysis(normalized)
-                out = os.path.join(self.settings.tmp_dir, "outputs", f"{uuid.uuid4()}.dot")
+                out = os.path.join(
+                    self.settings.tmp_dir, "outputs", f"{uuid.uuid4()}.dot"
+                )
                 os.makedirs(os.path.dirname(out), exist_ok=True)
                 with open(out, "w", encoding="utf-8") as dot_file:
                     dot_file.write(synthesized_dot)
@@ -408,8 +446,9 @@ class DiagramService:
         Build a Graphviz DOT representation from the analysis result.
         Handles overlapping clusters by declaring nodes only once, globally.
         """
+
         def q(value: str) -> str:
-            safe = (value or "").replace("\"", "\\\"")
+            safe = (value or "").replace('"', '\\"')
             return f'"{safe}"'
 
         lines: list[str] = ["digraph G {"]
@@ -427,8 +466,7 @@ class DiagramService:
             lines.append(f"    label={q(cluster.label)};")
             # List the node IDs that belong to this cluster
             valid_cluster_nodes = [
-                nid for nid in cluster.nodes
-                if any(n.id == nid for n in analysis.nodes)
+                nid for nid in cluster.nodes if any(n.id == nid for n in analysis.nodes)
             ]
             for node_id in sorted(valid_cluster_nodes):
                 lines.append(f"    {q(node_id)};")
@@ -440,4 +478,3 @@ class DiagramService:
 
         lines.append("}")
         return "\n".join(lines)
-

@@ -35,16 +35,20 @@ uv sync
 # 3) Configure env
 cp .env.example .env
 
-# Option A: real LLM with critique (best quality)
-# GEMINI_API_KEY=your_key
+# Option A: OpenAI with critique (best quality) - DEFAULT
+# OPENAI_API_KEY=your_key
 # USE_CRITIQUE_GENERATION=true
 # CRITIQUE_MAX_ATTEMPTS=3
 
-# Option B: real LLM without critique (faster)
-# GEMINI_API_KEY=your_key
+# Option B: OpenAI without critique (faster)
+# OPENAI_API_KEY=your_key
 # USE_CRITIQUE_GENERATION=false
 
-# Option C: local dev/testing
+# Option C: Gemini rollback (if needed)
+# LLM_PROVIDER=gemini
+# GEMINI_API_KEY=your_key
+
+# Option D: local dev/testing
 # MOCK_LLM=true
 
 # 4) Run the API
@@ -64,6 +68,7 @@ docker-compose up
 
 - Source is mounted for fast edit‑reload (`./app -> /app`).
 - Diagram images & DOT files are written to `/tmp/diagrams/outputs` (bind‑mounted).
+- Ensure `.env` contains `OPENAI_API_KEY`.
 
 ---
 
@@ -71,10 +76,15 @@ docker-compose up
 
 | Key                      | Default            | Description                                                           |
 | ------------------------ | ------------------ | --------------------------------------------------------------------- |
-| `GEMINI_API_KEY`         | —                  | API key for Gemini (Developer API)                                    |
-| `GEMINI_MODEL`           | `gemini-2.5-flash` | Model name                                                            |
-| `GEMINI_TIMEOUT`         | `60`               | Request timeout in seconds for LLM calls                              |
-| `GEMINI_TEMPERATURE`     | `0.1`              | Temperature for LLM generation (0.0-2.0, lower = more deterministic) |
+| `LLM_PROVIDER`           | `openai`           | LLM provider: "openai" or "gemini"                                   |
+| `OPENAI_API_KEY`         | —                  | API key for OpenAI (default provider)                                |
+| `OPENAI_MODEL`           | `gpt-4o-mini`      | OpenAI model name                                                     |
+| `OPENAI_TIMEOUT`         | `60`               | Request timeout in seconds for OpenAI calls                          |
+| `OPENAI_TEMPERATURE`     | `0.1`              | Temperature for OpenAI generation (0.0-2.0, lower = more deterministic) |
+| `GEMINI_API_KEY`         | —                  | API key for Gemini (rollback option)                                 |
+| `GEMINI_MODEL`           | `gemini-2.5-flash` | Gemini model name                                                     |
+| `GEMINI_TIMEOUT`         | `60`               | Request timeout in seconds for Gemini calls                          |
+| `GEMINI_TEMPERATURE`     | `0.1`              | Temperature for Gemini generation (0.0-2.0, lower = more deterministic) |
 | `USE_CRITIQUE_GENERATION`| `true`             | Enable critique-enhanced diagram generation for improved quality       |
 | `CRITIQUE_MAX_ATTEMPTS`  | `3`                | Maximum critique attempts for better quality (1-5)                    |
 | `MOCK_LLM`               | `false`            | If `true`, use deterministic mock analysis (no external calls)        |

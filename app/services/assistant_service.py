@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-
-from google.genai import types as genai_types
+import json
 
 from app.agents.assistant_agent import AssistantAgent
 from app.core.config import Settings
@@ -106,8 +105,6 @@ class AssistantService:
 
     async def _handle_with_tools(self, description: str) -> AssistantResponse:
         """Enable function/tool-calling for diagram generation."""
-        tool, tool_config = self._build_tools()
-
         # In mock mode, skip LLM tool loop and directly generate via service
         if self.settings.mock_llm:
             (
@@ -123,6 +120,132 @@ class AssistantService:
                 suggestions=["Would you like me to adjust layout or add components?"],
             )
 
+        if self.settings.llm_provider == "openai":
+            return await self._handle_with_tools_openai(description)
+        else:
+            return await self._handle_with_tools_gemini(description)
+
+    async def _handle_with_tools_openai(self, description: str) -> AssistantResponse:
+        """Handle tool calling with OpenAI Chat Completions."""
+        tools = self._build_openai_tools()
+        messages = [{"role": "user", "content": f"Create a diagram: {description}"}]
+        latest_image_data: str | None = None
+        latest_metadata: dict | None = None
+
+        for _ in range(3):
+            try:
+                response = await client.chat.completions.create(
+                    model=self.settings.openai_model,
+                    messages=messages,
+                    tools=tools,
+                    tool_choice="auto",
+                    temperature=self.settings.openai_temperature,
+                    timeout=self.settings.openai_timeout,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Assistant OpenAI tool loop failure, falling back to direct generation: {e}"
+                )
+                (
+                    latest_image_data,
+                    latest_metadata,
+                ) = await self.diagram_service.generate_diagram_from_description(
+                    description
+                )
+                return AssistantResponse(
+                    response_type="image",
+                    content="Here is the diagram you requested:",
+                    image_data=latest_image_data,
+                    suggestions=[
+                        "Would you like me to adjust layout or add components?"
+                    ],
+                )
+
+            message = response.choices[0].message
+
+            if message.tool_calls:
+                # Execute the first tool call
+                tool_call = message.tool_calls[0]
+                if tool_call.function.name == IntentType.GENERATE_DIAGRAM.value:
+                    args = json.loads(tool_call.function.arguments)
+                    desc = args.get("description", description)
+                    (
+                        latest_image_data,
+                        latest_metadata,
+                    ) = await self.diagram_service.generate_diagram_from_description(
+                        desc
+                    )
+
+                    # Add assistant message with tool call
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": tool_call.id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool_call.function.name,
+                                        "arguments": tool_call.function.arguments,
+                                    },
+                                }
+                            ],
+                        }
+                    )
+
+                    # Add tool response
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": json.dumps(
+                                {
+                                    "image_data": latest_image_data,
+                                    "metadata": latest_metadata,
+                                }
+                            ),
+                        }
+                    )
+                    continue
+                else:
+                    # Unknown tool, break out
+                    break
+            else:
+                # No tool calls, finalize
+                return AssistantResponse(
+                    response_type="image" if latest_image_data else "text",
+                    content=message.content or "Here is the diagram you requested:",
+                    image_data=latest_image_data,
+                    suggestions=[
+                        "Would you like me to adjust layout or add components?"
+                    ]
+                    if latest_image_data
+                    else None,
+                )
+
+        # Safety fallback
+        if latest_image_data:
+            return AssistantResponse(
+                response_type="image",
+                content="Here is the diagram you requested:",
+                image_data=latest_image_data,
+                suggestions=["Would you like me to adjust layout or add components?"],
+            )
+        (
+            latest_image_data,
+            _,
+        ) = await self.diagram_service.generate_diagram_from_description(description)
+        return AssistantResponse(
+            response_type="image",
+            content="Here is the diagram you requested:",
+            image_data=latest_image_data,
+        )
+
+    async def _handle_with_tools_gemini(self, description: str) -> AssistantResponse:
+        """Handle tool calling with Gemini (fallback)."""
+        from google.genai import types as genai_types
+
+        tool, tool_config = self._build_gemini_tools()
         contents = self._start_conversation(description)
         latest_image_data: str | None = None
         latest_metadata: dict | None = None
@@ -145,7 +268,7 @@ class AssistantService:
                 )
             except Exception as e:
                 logger.warning(
-                    f"Assistant tool loop LLM failure, falling back to direct generation: {e}"
+                    f"Assistant Gemini tool loop failure, falling back to direct generation: {e}"
                 )
                 (
                     latest_image_data,
@@ -167,7 +290,7 @@ class AssistantService:
                 contents,
                 latest_image_data,
                 latest_metadata,
-            ) = await self._maybe_execute_tool(
+            ) = await self._maybe_execute_tool_gemini(
                 resp, description, contents, latest_image_data, latest_metadata
             )
             if did_call:
@@ -177,7 +300,9 @@ class AssistantService:
             final: AssistantFinal | None = getattr(resp, "parsed", None)
             if not final:
                 # Defensive fallback in case SDK returns non-parsed
-                text_fallback = getattr(resp, "text", None) or "Here is the diagram you requested:"
+                text_fallback = (
+                    getattr(resp, "text", None) or "Here is the diagram you requested:"
+                )
                 return AssistantResponse(
                     response_type="image" if latest_image_data else "text",
                     content=text_fallback,
@@ -213,28 +338,58 @@ class AssistantService:
             image_data=latest_image_data,
         )
 
-    def _build_tools(self) -> tuple[genai_types.Tool, genai_types.ToolConfig]:
+    def _build_openai_tools(self) -> list[dict]:
+        """Build OpenAI Chat Completions tools definition."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": IntentType.GENERATE_DIAGRAM.value,
+                    "description": "Generate a diagram from a natural language description.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "description": {
+                                "type": "string",
+                                "description": "Natural language description of the diagram to generate",
+                            }
+                        },
+                        "required": ["description"],
+                    },
+                },
+            }
+        ]
+
+    def _build_gemini_tools(self) -> tuple:
         """Declare tools and return Tool plus ToolConfig set to ANY mode.
 
         Using FunctionCallingConfig(mode='ANY') strongly encourages tool use.
         """
+        from google.genai import types as genai_types
+
         generate_fn = genai_types.FunctionDeclaration(
             name=IntentType.GENERATE_DIAGRAM.value,
             description="Generate a diagram from a natural language description.",
             parameters=genai_types.Schema(
                 type=genai_types.Type.OBJECT,
-                properties={"description": genai_types.Schema(type=genai_types.Type.STRING)},
+                properties={
+                    "description": genai_types.Schema(type=genai_types.Type.STRING)
+                },
                 required=["description"],
             ),
         )
         tool = genai_types.Tool(function_declarations=[generate_fn])
         tool_config = genai_types.ToolConfig(
-            function_calling_config=genai_types.FunctionCallingConfig(mode=genai_types.FunctionCallingConfigMode.ANY)
+            function_calling_config=genai_types.FunctionCallingConfig(
+                mode=genai_types.FunctionCallingConfigMode.ANY
+            )
         )
         return tool, tool_config
 
-    def _start_conversation(self, description: str) -> list[genai_types.Content]:
+    def _start_conversation(self, description: str) -> list:
         """Seed the conversation with the user request."""
+        from google.genai import types as genai_types
+
         return [
             genai_types.Content(
                 role="user",
@@ -244,18 +399,20 @@ class AssistantService:
             )
         ]
 
-    async def _maybe_execute_tool(
+    async def _maybe_execute_tool_gemini(
         self,
         resp,
         description: str,
-        contents: list[genai_types.Content],
+        contents: list,
         latest_image_data: str | None,
         latest_metadata: dict | None,
-    ) -> tuple[bool, list[genai_types.Content], str | None, dict | None]:
+    ) -> tuple[bool, list, str | None, dict | None]:
         """Execute the first function call if present; return whether a call was made.
 
         Appends the model's tool call and our tool response to contents when executed.
         """
+        from google.genai import types as genai_types
+
         if not getattr(resp, "function_calls", None):
             return False, contents, latest_image_data, latest_metadata
 

@@ -12,6 +12,7 @@ from app.core.constants import (
 from app.core.llm import client
 from app.core.prompts import intent_prompt
 from app.core.schemas import IntentResult
+from app.core.structured import ask_structured
 
 __all__ = ["AssistantAgent"]
 
@@ -34,7 +35,9 @@ class AssistantAgent:
             if any(word in lower for word in DIAGRAM_PHRASES):
                 desc = message
                 return IntentResult(
-                    intent=IntentType.GENERATE_DIAGRAM.value, description=desc, confidence=0.9
+                    intent=IntentType.GENERATE_DIAGRAM.value,
+                    description=desc,
+                    confidence=0.9,
                 )
             return IntentResult(intent=IntentType.CLARIFICATION.value, confidence=0.6)
 
@@ -46,21 +49,24 @@ class AssistantAgent:
 
         prompt = intent_prompt(message + context_str)
         try:
-            response = await asyncio.wait_for(
-                client.aio.models.generate_content(
-                    model=settings.gemini_model,
-                    contents=prompt,
-                    config={
-                        "response_mime_type": "application/json",
-                        "response_schema": IntentResult,
-                        "temperature": settings.gemini_temperature,
-                    },
-                ),
-                timeout=settings.gemini_timeout,
-            )
-            if getattr(response, "parsed", None):
-                return response.parsed
-            raise ValueError("Failed to parse LLM response as JSON.")
+            if settings.llm_provider == "openai":
+                return await ask_structured(prompt, IntentResult)
+            else:  # Gemini fallback
+                response = await asyncio.wait_for(
+                    client.aio.models.generate_content(
+                        model=settings.gemini_model,
+                        contents=prompt,
+                        config={
+                            "response_mime_type": "application/json",
+                            "response_schema": IntentResult,
+                            "temperature": settings.gemini_temperature,
+                        },
+                    ),
+                    timeout=settings.gemini_timeout,
+                )
+                if getattr(response, "parsed", None):
+                    return response.parsed
+                raise ValueError("Failed to parse LLM response as JSON.")
         except Exception:
             # Runtime fallback: heuristic intent
             return self._create_fallback_intent(message)
@@ -68,12 +74,11 @@ class AssistantAgent:
     def _create_fallback_intent(self, message: str) -> IntentResult:
         """Create a basic fallback intent when API is unavailable."""
         message_lower = message.lower()
-        if any(
-            word in message_lower
-            for word in DIAGRAM_PHRASES
-        ):
+        if any(word in message_lower for word in DIAGRAM_PHRASES):
             return IntentResult(
-                intent=IntentType.GENERATE_DIAGRAM.value, confidence=0.5, description=message
+                intent=IntentType.GENERATE_DIAGRAM.value,
+                confidence=0.5,
+                description=message,
             )
         if any(word in message_lower for word in HELP_PHRASES):
             return IntentResult(intent=IntentType.HELP.value, confidence=0.5)

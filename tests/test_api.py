@@ -17,9 +17,13 @@ from app.services.diagram_service import DiagramService
 def mock_settings() -> Settings:
     """Mock settings for testing."""
     return Settings(
-        gemini_api_key="test_api_key",
+        llm_provider="openai",
+        openai_api_key="test_openai_key",
+        openai_model="gpt-4o-mini",
+        gemini_api_key="test_gemini_key",  # Keep for rollback tests
         gemini_model="gemini-2.5-flash",
         tmp_dir="/tmp/test_diagrams",
+        mock_llm=True,  # Enable mock for tests
     )
 
 
@@ -86,7 +90,10 @@ async def test_assistant(mock_assistant_service, mock_settings):
 
 def test_settings_resolution(mock_settings):
     """Test that settings are resolved from environment variables."""
-    assert mock_settings.gemini_api_key == "test_api_key"
+    assert mock_settings.llm_provider == "openai"
+    assert mock_settings.openai_api_key == "test_openai_key"
+    assert mock_settings.openai_model == "gpt-4o-mini"
+    assert mock_settings.gemini_api_key == "test_gemini_key"
     assert mock_settings.gemini_model == "gemini-2.5-flash"
     assert mock_settings.tmp_dir == "/tmp/test_diagrams"
 
@@ -95,13 +102,20 @@ def test_settings_resolution(mock_settings):
 async def test_diagram_generation_thread_pool():
     """Test that diagram generation runs in thread pool."""
     import base64
+
     # Create valid base64 test data
     test_image_b64 = base64.b64encode(b"fake_image_data").decode()
-    
+
     with patch("anyio.to_thread.run_sync") as mock_run_sync:
         mock_run_sync.return_value = (test_image_b64, {"nodes_created": 1})
 
-        settings = Settings(gemini_api_key="test_key", tmp_dir="/tmp/test", use_critique_generation=False)
+        settings = Settings(
+            llm_provider="openai",
+            openai_api_key="test_key",
+            tmp_dir="/tmp/test",
+            use_critique_generation=False,
+            mock_llm=True,
+        )
         service = DiagramService(settings)
 
         # Mock the agent analysis
@@ -203,7 +217,12 @@ async def test_diagram_generation_bad_request():
 @pytest.mark.asyncio
 async def test_assistant_service_memory():
     """Test assistant service conversation memory."""
-    settings = Settings(gemini_api_key="test_key", tmp_dir="/tmp/test")
+    settings = Settings(
+        llm_provider="openai",
+        openai_api_key="test_key",
+        tmp_dir="/tmp/test",
+        mock_llm=True,
+    )
     service = AssistantService(settings)
 
     # Mock the agent to return predictable results
@@ -230,7 +249,12 @@ async def test_assistant_service_memory():
 
 def test_assistant_service_context_limit():
     """Test that conversation context is limited to prevent memory bloat."""
-    settings = Settings(gemini_api_key="test_key", tmp_dir="/tmp/test")
+    settings = Settings(
+        llm_provider="openai",
+        openai_api_key="test_key",
+        tmp_dir="/tmp/test",
+        mock_llm=True,
+    )
     service = AssistantService(settings)
 
     # Create a large context
@@ -243,3 +267,47 @@ def test_assistant_service_context_limit():
 
     # Should be limited to 10 messages
     assert len(updated_context["messages"]) == 10
+
+
+def test_data_url_base64_round_trip():
+    """Test that base64 data URL construction and parsing works correctly."""
+    import base64
+
+    # Create test image data
+    test_image_data = b"fake_png_data_for_testing"
+
+    # Convert to base64 data URL
+    image_b64 = base64.b64encode(test_image_data).decode("utf-8")
+    data_url = f"data:image/png;base64,{image_b64}"
+
+    # Verify format
+    assert data_url.startswith("data:image/png;base64,")
+
+    # Extract and decode
+    extracted_b64 = data_url.split(",", 1)[1]
+    decoded_data = base64.b64decode(extracted_b64)
+
+    # Verify round trip
+    assert decoded_data == test_image_data
+
+
+@pytest.mark.asyncio
+async def test_llm_provider_rollback():
+    """Test that Gemini rollback works when provider is set to gemini."""
+    settings = Settings(
+        llm_provider="gemini",
+        gemini_api_key="test_gemini_key",
+        openai_api_key="test_openai_key",
+        tmp_dir="/tmp/test",
+        mock_llm=True,
+    )
+
+    # Verify provider is set correctly
+    assert settings.llm_provider == "gemini"
+
+    # Test that services can be instantiated with Gemini provider
+    diagram_service = DiagramService(settings)
+    assistant_service = AssistantService(settings)
+
+    assert diagram_service.settings.llm_provider == "gemini"
+    assert assistant_service.settings.llm_provider == "gemini"

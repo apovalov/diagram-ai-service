@@ -13,6 +13,24 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
 
+    # LLM Provider Configuration
+    llm_provider: str = Field(
+        default="openai", description="LLM provider: 'openai' or 'gemini'"
+    )
+
+    # OpenAI Configuration
+    openai_api_key: str | None = Field(
+        default=None, description="OpenAI API key (optional in mock mode)"
+    )
+    openai_model: str = Field(default="gpt-4o-mini", description="OpenAI model name")
+    openai_timeout: int = Field(
+        default=60, description="Timeout in seconds for OpenAI requests"
+    )
+    openai_temperature: float = Field(
+        default=0.1, description="Temperature parameter for OpenAI generation (0.0-2.0)"
+    )
+
+    # Gemini Configuration (kept for rollback)
     gemini_api_key: str | None = Field(
         default=None, description="Google Gemini API key (optional in mock mode)"
     )
@@ -43,21 +61,13 @@ class Settings(BaseSettings):
         default=3,
         description="Maximum number of attempts for critique generation (1-5)",
     )
-    analysis_max_attempts: int = Field(
-        default=2, description="Retries for analysis"
-    )
-    adjust_max_attempts: int = Field(
-        default=2, description="Retries for adjust"
-    )
+    analysis_max_attempts: int = Field(default=2, description="Retries for analysis")
+    adjust_max_attempts: int = Field(default=2, description="Retries for adjust")
     retry_backoff_base: float = Field(
         default=0.5, description="Exponential backoff base (s)"
     )
-    retry_backoff_max: float = Field(
-        default=4.0, description="Backoff cap (s)"
-    )
-    retry_jitter: float = Field(
-        default=0.25, description="Jitter (s)"
-    )
+    retry_backoff_max: float = Field(default=4.0, description="Backoff cap (s)")
+    retry_jitter: float = Field(default=0.25, description="Jitter (s)")
     google_cloud_project: str = Field(
         default="", description="Google Cloud Project ID for Vertex AI"
     )
