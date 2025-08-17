@@ -70,7 +70,7 @@ async def ask_structured(prompt: str, schema_cls: type[T]) -> T:
             "json_schema": {
                 "name": schema_cls.__name__,
                 "schema": schema,
-                "strict": True,
+                "strict": False,
             },
         },
         temperature=settings.llm_temperature,
@@ -134,7 +134,7 @@ async def ask_structured_vision(
             "json_schema": {
                 "name": schema_cls.__name__,
                 "schema": schema,
-                "strict": True,
+                "strict": False,
             },
         },
         temperature=settings.llm_temperature,
