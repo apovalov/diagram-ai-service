@@ -72,6 +72,17 @@ class Settings(BaseSettings):
         default="us-central1", description="Google Cloud location for Vertex AI"
     )
 
+    # LangChain Migration Feature Flags
+    use_langchain: bool = Field(
+        default=False, description="Enable LangChain implementation"
+    )
+    langchain_fallback: bool = Field(
+        default=True, description="Fallback to original if LangChain fails"
+    )
+    langchain_verbose: bool = Field(
+        default=False, description="Enable LangChain verbose logging"
+    )
+
 
 # Global settings instance
 settings = Settings()

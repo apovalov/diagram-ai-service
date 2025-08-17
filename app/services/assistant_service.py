@@ -4,6 +4,7 @@ import asyncio
 import json
 
 from app.agents.assistant_agent import AssistantAgent
+from app.agents.langchain_assistant_agent import LangChainAssistantAgent
 from app.core.config import Settings
 from app.core.constants import IntentType
 from app.core.llm import client
@@ -26,7 +27,17 @@ class AssistantService:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.assistant_agent = AssistantAgent()
+
+        # Initialize assistant agents based on feature flag
+        if self.settings.use_langchain:
+            self.assistant_agent = LangChainAssistantAgent()
+            self.original_assistant_agent = AssistantAgent()  # Keep as fallback
+            logger.info("Using LangChain-based assistant agent")
+        else:
+            self.assistant_agent = AssistantAgent()
+            self.original_assistant_agent = None
+            logger.info("Using original assistant agent")
+
         self.diagram_service = DiagramService(settings)
         # Simple in-memory conversation store (for stateless service with session-like behavior)
         self._conversation_context: dict[str, dict] = {}
@@ -46,7 +57,7 @@ class AssistantService:
         if request.context:
             context.update(request.context)
 
-        intent_result: IntentResult = await self.assistant_agent.get_intent(
+        intent_result: IntentResult = await self._get_intent_with_fallback(
             message_with_context, context
         )
         intent = intent_result.intent
@@ -446,6 +457,21 @@ class AssistantService:
             latest_image_data,
             latest_metadata,
         )
+
+    async def _get_intent_with_fallback(
+        self, message: str, context: dict | None = None
+    ) -> IntentResult:
+        """Get intent with fallback to original agent if LangChain fails."""
+        if self.settings.use_langchain:
+            try:
+                return await self.assistant_agent.get_intent(message, context)
+            except Exception as e:
+                if self.settings.langchain_fallback and self.original_assistant_agent:
+                    logger.warning(f"LangChain intent detection failed, using original: {e}")
+                    return await self.original_assistant_agent.get_intent(message, context)
+                raise
+        else:
+            return await self.assistant_agent.get_intent(message, context)
 
     def _get_conversation_context(self, conversation_id: str) -> dict:
         """Get conversation context for a given conversation ID."""

@@ -15,7 +15,13 @@ dependencies = [
     "diagrams",
     "pydantic",
     "pydantic-settings",
-    "anyio"
+    "anyio",
+    "langchain>=0.1.0",
+    "langchain-openai>=0.1.0",
+    "langchain-google-genai>=1.0.0",
+    "langchain-community>=0.0.20",
+    "langchain-core>=0.1.0",
+    "google-genai>=0.5.0"
 ]
 
 [project.optional-dependencies]

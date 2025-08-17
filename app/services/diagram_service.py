@@ -20,6 +20,7 @@ from diagrams.aws.storage import S3
 from diagrams.generic.blank import Blank
 
 from app.agents.diagram_agent import DiagramAgent
+from app.agents.langchain_diagram_agent import LangChainDiagramAgent
 from app.core.config import Settings
 from app.core.logging import get_logger
 from app.core.schemas import (
@@ -111,7 +112,16 @@ class DiagramService:
         self.temp_dir = settings.tmp_dir
         if not os.path.exists(self.temp_dir):
             os.makedirs(self.temp_dir)
-        self.agent = DiagramAgent()
+
+        # Initialize agents based on feature flag
+        if self.settings.use_langchain:
+            self.agent = LangChainDiagramAgent()
+            self.original_agent = DiagramAgent()  # Keep as fallback
+            logger.info("Using LangChain-based diagram agent")
+        else:
+            self.agent = DiagramAgent()
+            self.original_agent = None
+            logger.info("Using original diagram agent")
 
         # Run cleanup on initialization
         self._cleanup_old_files()
@@ -134,6 +144,18 @@ class DiagramService:
         Uses critique-enhanced generation if settings.use_critique_generation is True,
         otherwise uses the standard generation workflow.
         """
+        if self.settings.use_langchain:
+            try:
+                return await self._generate_with_langchain(description)
+            except Exception as e:
+                if self.settings.langchain_fallback:
+                    logger.warning(f"LangChain generation failed, using original: {e}")
+                    return await self._generate_original(description)
+                raise
+        return await self._generate_original(description)
+
+    async def _generate_with_langchain(self, description: str) -> tuple[str, dict[str, Any]]:
+        """Generate diagram using LangChain agent."""
         if self.settings.use_critique_generation:
             # Use the critique-enhanced generation workflow
             (
@@ -151,6 +173,35 @@ class DiagramService:
         else:
             # Use the standard generation workflow (original implementation)
             return await self._generate_diagram_standard(description)
+
+    async def _generate_original(self, description: str) -> tuple[str, dict[str, Any]]:
+        """Generate diagram using original agent."""
+        # Temporarily switch to original agent
+        current_agent = self.agent
+        try:
+            if self.original_agent:
+                self.agent = self.original_agent
+
+            if self.settings.use_critique_generation:
+                # Use the critique-enhanced generation workflow
+                (
+                    (image_before, image_after),
+                    metadata,
+                ) = await self.generate_diagram_with_critique(description)
+
+                # Return the final image (after critique adjustments if available) or the original
+                final_image = image_after if image_after else image_before
+
+                # Add a flag to indicate if critique improvements were applied
+                metadata["critique_applied"] = image_after is not None
+
+                return final_image, metadata
+            else:
+                # Use the standard generation workflow (original implementation)
+                return await self._generate_diagram_standard(description)
+        finally:
+            # Restore original agent
+            self.agent = current_agent
 
     async def generate_diagram_with_critique(
         self, description: str
