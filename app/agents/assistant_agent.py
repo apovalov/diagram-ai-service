@@ -59,10 +59,10 @@ class AssistantAgent:
                         config={
                             "response_mime_type": "application/json",
                             "response_schema": IntentResult,
-                            "temperature": settings.gemini_temperature,
+                            "temperature": settings.llm_temperature,
                         },
                     ),
-                    timeout=settings.gemini_timeout,
+                    timeout=settings.llm_timeout,
                 )
                 if getattr(response, "parsed", None):
                     return response.parsed

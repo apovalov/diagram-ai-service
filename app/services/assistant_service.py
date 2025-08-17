@@ -139,8 +139,8 @@ class AssistantService:
                     messages=messages,
                     tools=tools,
                     tool_choice="auto",
-                    temperature=self.settings.openai_temperature,
-                    timeout=self.settings.openai_timeout,
+                    temperature=self.settings.llm_temperature,
+                    timeout=self.settings.llm_timeout,
                 )
             except Exception as e:
                 logger.warning(
@@ -261,10 +261,10 @@ class AssistantService:
                             tool_config=tool_config,
                             response_mime_type="application/json",
                             response_schema=AssistantFinal,
-                            temperature=self.settings.gemini_temperature,
+                            temperature=self.settings.llm_temperature,
                         ),
                     ),
-                    timeout=self.settings.gemini_timeout,
+                    timeout=self.settings.llm_timeout,
                 )
             except Exception as e:
                 logger.warning(

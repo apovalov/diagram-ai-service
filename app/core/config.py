@@ -23,12 +23,6 @@ class Settings(BaseSettings):
         default=None, description="OpenAI API key (optional in mock mode)"
     )
     openai_model: str = Field(default="gpt-4o-mini", description="OpenAI model name")
-    openai_timeout: int = Field(
-        default=60, description="Timeout in seconds for OpenAI requests"
-    )
-    openai_temperature: float = Field(
-        default=0.1, description="Temperature parameter for OpenAI generation (0.0-2.0)"
-    )
 
     # Gemini Configuration (kept for rollback)
     gemini_api_key: str | None = Field(
@@ -37,12 +31,15 @@ class Settings(BaseSettings):
     gemini_model: str = Field(
         default="gemini-2.5-flash", description="Gemini model name"
     )
-    gemini_timeout: int = Field(
+
+    # Unified LLM Configuration
+    llm_timeout: int = Field(
         default=60, description="Timeout in seconds for LLM requests"
     )
-    gemini_temperature: float = Field(
+    llm_temperature: float = Field(
         default=0.1, description="Temperature parameter for LLM generation (0.0-2.0)"
     )
+
     tmp_dir: str = Field(
         default="/tmp/diagrams", description="Temporary directory for diagram files"
     )

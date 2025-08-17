@@ -79,12 +79,10 @@ docker-compose up
 | `LLM_PROVIDER`           | `openai`           | LLM provider: "openai" or "gemini"                                   |
 | `OPENAI_API_KEY`         | —                  | API key for OpenAI (default provider)                                |
 | `OPENAI_MODEL`           | `gpt-4o-mini`      | OpenAI model name                                                     |
-| `OPENAI_TIMEOUT`         | `60`               | Request timeout in seconds for OpenAI calls                          |
-| `OPENAI_TEMPERATURE`     | `0.1`              | Temperature for OpenAI generation (0.0-2.0, lower = more deterministic) |
+| `LLM_TIMEOUT`            | `60`               | Request timeout in seconds for LLM calls                             |
+| `LLM_TEMPERATURE`        | `0.1`              | Temperature for LLM generation (0.0-2.0, lower = more deterministic) |
 | `GEMINI_API_KEY`         | —                  | API key for Gemini (rollback option)                                 |
 | `GEMINI_MODEL`           | `gemini-2.5-flash` | Gemini model name                                                     |
-| `GEMINI_TIMEOUT`         | `60`               | Request timeout in seconds for Gemini calls                          |
-| `GEMINI_TEMPERATURE`     | `0.1`              | Temperature for Gemini generation (0.0-2.0, lower = more deterministic) |
 | `USE_CRITIQUE_GENERATION`| `true`             | Enable critique-enhanced diagram generation for improved quality       |
 | `CRITIQUE_MAX_ATTEMPTS`  | `3`                | Maximum critique attempts for better quality (1-5)                    |
 | `MOCK_LLM`               | `false`            | If `true`, use deterministic mock analysis (no external calls)        |
@@ -98,7 +96,7 @@ docker-compose up
 When `USE_CRITIQUE_GENERATION=true` (default), the service uses an advanced workflow:
 
 1. **Generate** initial diagram from description
-2. **Critique** the rendered image using AI vision analysis  
+2. **Critique** the rendered image using AI vision analysis
 3. **Retry** critique up to `CRITIQUE_MAX_ATTEMPTS` times for better feedback
 4. **Adjust** and re-render if improvements are suggested
 5. **Return** the improved diagram (or original if no improvements needed)
@@ -283,7 +281,7 @@ curl -s -X POST "http://localhost:8000/api/v1/generate-diagram" \
 - When an unsupported service is mentioned, it maps to a close canonical type (e.g., "database" → `rds`, business services → `service`).
 - Each node can belong to **one cluster** at most; we prioritize **functional** groupings.
 - **Critique generation** analyzes diagrams and applies improvements with configurable retry attempts for higher success rates.
-- **LLM timeouts** are configurable; adjust `GEMINI_TIMEOUT` based on your network and complexity needs.
+- **LLM timeouts** are configurable; adjust `LLM_TIMEOUT` based on your network and complexity needs.
 - **Critique retries** improve quality but increase processing time; tune `CRITIQUE_MAX_ATTEMPTS` for your use case.
 - If the LLM is unavailable, a **heuristic fallback** still renders a sensible diagram.
 - Layout is automatic; complex meshes may need manual post‑tweaks.

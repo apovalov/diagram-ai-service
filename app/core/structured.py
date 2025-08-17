@@ -14,27 +14,29 @@ T = TypeVar("T", bound=BaseModel)
 
 
 def _json_schema_from_pydantic(model: type[BaseModel]) -> dict:
-    """Extract JSON schema from Pydantic model for OpenAI structured outputs."""
+    """Extract JSON schema from Pydantic model for OpenAI structured outputs.
+
+    We preserve Pydantic's 'required' semantics and only enforce
+    'additionalProperties': False on JSON objects, recursively.
+    """
     schema = model.model_json_schema()
 
-    # OpenAI structured outputs require specific modifications for all objects
-    def fix_schema_for_openai(obj):
+    def tighten(obj):
+        # Recurse into dicts and lists, handling $ref/anyOf/allOf oneOf variations gracefully.
         if isinstance(obj, dict):
+            # If this node is an object schema, set additionalProperties=false but do NOT touch 'required'
             if obj.get("type") == "object":
-                # Add additionalProperties: false
-                obj["additionalProperties"] = False
+                obj.setdefault("additionalProperties", False)
 
-                # OpenAI requires ALL properties to be in required array
-                if "properties" in obj:
-                    obj["required"] = list(obj["properties"].keys())
+            # Recurse into all nested values (properties, items, anyOf, allOf, oneOf, definitions, etc.)
+            for v in obj.values():
+                tighten(v)
 
-            for value in obj.values():
-                fix_schema_for_openai(value)
         elif isinstance(obj, list):
             for item in obj:
-                fix_schema_for_openai(item)
+                tighten(item)
 
-    fix_schema_for_openai(schema)
+    tighten(schema)
     return schema
 
 
@@ -71,7 +73,7 @@ async def ask_structured(prompt: str, schema_cls: type[T]) -> T:
                 "strict": True,
             },
         },
-        temperature=settings.openai_temperature,
+        temperature=settings.llm_temperature,
     )
 
     # Extract JSON from response
@@ -135,7 +137,7 @@ async def ask_structured_vision(
                 "strict": True,
             },
         },
-        temperature=settings.openai_temperature,
+        temperature=settings.llm_temperature,
     )
 
     # Extract JSON from response

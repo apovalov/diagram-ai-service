@@ -37,7 +37,7 @@ elif settings.llm_provider == "openai":
     try:
         openai_client = AsyncOpenAI(
             api_key=settings.openai_api_key or "dummy-key-for-testing",
-            timeout=settings.openai_timeout,
+            timeout=settings.llm_timeout,
         )
         client = SimpleNamespace(
             # OpenAI methods

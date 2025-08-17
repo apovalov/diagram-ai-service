@@ -117,10 +117,10 @@ class DiagramAgent:
                         config={
                             "response_mime_type": "application/json",
                             "response_schema": DiagramAnalysis,
-                            "temperature": settings.gemini_temperature,
+                            "temperature": settings.llm_temperature,
                         },
                     ),
-                    timeout=settings.gemini_timeout,
+                    timeout=settings.llm_timeout,
                 )
                 elapsed_ms = int((time.monotonic() - start) * 1000)
 
@@ -211,10 +211,10 @@ class DiagramAgent:
                     config={
                         "response_mime_type": "application/json",
                         "response_schema": DiagramCritique,
-                        "temperature": settings.gemini_temperature,
+                        "temperature": settings.llm_temperature,
                     },
                 ),
-                timeout=settings.gemini_timeout,
+                timeout=settings.llm_timeout,
             )
 
             if getattr(response, "parsed", None):
@@ -241,10 +241,10 @@ class DiagramAgent:
                         config={
                             "response_mime_type": "application/json",
                             "response_schema": DiagramAnalysis,
-                            "temperature": settings.gemini_temperature,
+                            "temperature": settings.llm_temperature,
                         },
                     ),
-                    timeout=settings.gemini_timeout,
+                    timeout=settings.llm_timeout,
                 )
 
                 if getattr(response, "parsed", None):
