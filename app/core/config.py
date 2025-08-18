@@ -83,6 +83,26 @@ class Settings(BaseSettings):
         default=False, description="Enable LangChain verbose logging"
     )
 
+    # LangGraph Migration Feature Flags
+    use_langgraph: bool = Field(
+        default=False, description="Enable LangGraph workflow implementation"
+    )
+    langgraph_fallback: bool = Field(
+        default=True, description="Fallback to LangChain/original if LangGraph fails"
+    )
+    use_checkpoints: bool = Field(
+        default=True, description="Enable workflow state persistence"
+    )
+    enable_streaming: bool = Field(
+        default=False, description="Enable real-time workflow streaming"
+    )
+    enable_human_review: bool = Field(
+        default=False, description="Enable human-in-the-loop capabilities"
+    )
+    workflow_cache_ttl: int = Field(
+        default=3600, description="Node cache TTL in seconds (0 to disable)"
+    )
+
 
 # Global settings instance
 settings = Settings()

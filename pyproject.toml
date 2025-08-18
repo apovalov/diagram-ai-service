@@ -21,6 +21,8 @@ dependencies = [
     "langchain-google-genai>=1.0.0",
     "langchain-community>=0.0.20",
     "langchain-core>=0.1.0",
+    "langgraph>=0.2.76",
+    "langgraph-prebuilt>=0.1.0",
     "google-genai>=0.5.0"
 ]
 

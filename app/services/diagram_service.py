@@ -83,6 +83,7 @@ ALIASES: dict[str, str] = {
     "web_server": "ec2",
     "microservice": "service",
     "queue": "sqs",
+    "aws_lambda": "lambda",  # Handle "AWS Lambda" type from analysis
     # Business service names collapse to generic service (labels stay descriptive)
     "auth_service": "service",
     "payment_service": "service",
@@ -143,7 +144,22 @@ class DiagramService:
 
         Uses critique-enhanced generation if settings.use_critique_generation is True,
         otherwise uses the standard generation workflow.
+        
+        Implements three-tier fallback: LangGraph → LangChain → Original
         """
+        # Try LangGraph first if enabled
+        if getattr(self.settings, "use_langgraph", False):
+            try:
+                from app.services.langgraph_diagram_service import LangGraphDiagramService
+                langgraph_service = LangGraphDiagramService(self.settings)
+                return await langgraph_service.generate_diagram_from_description(description)
+            except Exception as e:
+                if getattr(self.settings, "langgraph_fallback", True):
+                    logger.warning(f"LangGraph generation failed, falling back to LangChain/original: {e}")
+                else:
+                    raise
+        
+        # Fallback to LangChain if enabled
         if self.settings.use_langchain:
             try:
                 return await self._generate_with_langchain(description)
@@ -152,6 +168,8 @@ class DiagramService:
                     logger.warning(f"LangChain generation failed, using original: {e}")
                     return await self._generate_original(description)
                 raise
+        
+        # Final fallback to original implementation
         return await self._generate_original(description)
 
     async def _generate_with_langchain(self, description: str) -> tuple[str, dict[str, Any]]:
