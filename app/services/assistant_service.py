@@ -467,8 +467,12 @@ class AssistantService:
                 return await self.assistant_agent.get_intent(message, context)
             except Exception as e:
                 if self.settings.langchain_fallback and self.original_assistant_agent:
-                    logger.warning(f"LangChain intent detection failed, using original: {e}")
-                    return await self.original_assistant_agent.get_intent(message, context)
+                    logger.warning(
+                        f"LangChain intent detection failed, using original: {e}"
+                    )
+                    return await self.original_assistant_agent.get_intent(
+                        message, context
+                    )
                 raise
         else:
             return await self.assistant_agent.get_intent(message, context)

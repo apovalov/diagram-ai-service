@@ -23,14 +23,21 @@ from app.core.schemas import (
     DiagramCritique,
 )
 from app.core.structured import ask_structured, ask_structured_vision
+from app.agents.base_agent import BaseAgent
+from app.core.error_handler import handle_errors
+from app.core.exceptions import AnalysisError, CritiqueError, LLMProviderError, RetryableError, ValidationError
 
 __all__ = ["DiagramAgent"]
 
 
-class DiagramAgent:
-    """Agent for analyzing diagram descriptions and extracting components."""
+class DiagramAgent(BaseAgent):
+    """Enhanced diagram agent with unified error handling."""
 
-    def __init__(self) -> None:
+    def __init__(self, settings_override=None) -> None:
+        # Support both old and new initialization patterns for backward compatibility
+        agent_settings = settings_override or settings
+        super().__init__(agent_settings)
+        # Keep original logger for existing code compatibility
         self.logger = get_logger(__name__)
 
     async def _retry_with_backoff(
@@ -176,9 +183,17 @@ class DiagramAgent:
             )
             return self._heuristic_analysis(description)
 
+    @handle_errors("critique", fallback="_create_default_critique")
     async def critique_analysis(
         self, description: str, analysis: DiagramAnalysis, image_bytes: bytes
     ) -> DiagramCritique:
+        """Critique the current diagram analysis using vision capabilities."""
+        # Validate inputs
+        description = self._validate_description(description)
+        if not analysis:
+            raise ValidationError("Analysis is required for critique")
+        if not image_bytes:
+            raise ValidationError("Image bytes are required for critique")
         if settings.mock_llm:
             return DiagramCritique(done=True, critique=None)
 
@@ -221,9 +236,18 @@ class DiagramAgent:
                 return response.parsed
             raise ValueError("Failed to parse critique as JSON.")
 
+    @handle_errors("adjustment", fallback="_return_original_analysis")
     async def adjust_analysis(
         self, description: str, analysis: DiagramAnalysis, critique: str
     ) -> DiagramAnalysis:
+        """Adjust the diagram analysis based on critique feedback."""
+        # Validate inputs
+        description = self._validate_description(description)
+        if not analysis:
+            raise ValidationError("Analysis is required for adjustment")
+        if not critique:
+            self.logger.info("No critique provided, returning original analysis")
+            return analysis
         if settings.mock_llm:
             return analysis
 
@@ -335,3 +359,30 @@ class DiagramAgent:
             clusters=clusters,
             connections=connections,
         )
+
+    # === FALLBACK METHODS FOR ERROR HANDLING ===
+
+    def _heuristic_analysis(self, description: str = None) -> DiagramAnalysis:
+        """Fallback heuristic analysis."""
+        self.logger.info("Using heuristic analysis fallback")
+        # Use existing heuristic logic but make description optional for fallback
+        if not description:
+            description = "fallback analysis"
+        return self._create_heuristic_analysis(description)
+
+    def _create_default_critique(self) -> DiagramCritique:
+        """Fallback critique."""
+        self.logger.info("Using default critique fallback")
+        return DiagramCritique(
+            done=True, critique="Unable to perform critique, proceeding with diagram"
+        )
+
+    def _return_original_analysis(self, *args, **kwargs) -> DiagramAnalysis:
+        """Fallback for adjustment - return original analysis."""
+        self.logger.info("Using original analysis fallback")
+        # Try to extract analysis from arguments
+        for arg in args:
+            if isinstance(arg, DiagramAnalysis):
+                return arg
+        # If no analysis found, create a basic fallback
+        return self._create_heuristic_analysis("fallback")

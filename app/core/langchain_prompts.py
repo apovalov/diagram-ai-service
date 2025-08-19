@@ -41,10 +41,12 @@ Possible intents are:
 
     human_template = "Message: {message}"
 
-    prompt = ChatPromptTemplate.from_messages([
-        SystemMessagePromptTemplate.from_template(system_template),
-        HumanMessagePromptTemplate.from_template(human_template),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            SystemMessagePromptTemplate.from_template(system_template),
+            HumanMessagePromptTemplate.from_template(human_template),
+        ]
+    )
 
     # Add format instructions to the prompt
     prompt = prompt.partial(format_instructions=parser.get_format_instructions())
@@ -89,10 +91,12 @@ Example (functional grouping preferred):
 
     human_template = "Description: {description}"
 
-    prompt = ChatPromptTemplate.from_messages([
-        SystemMessagePromptTemplate.from_template(system_template),
-        HumanMessagePromptTemplate.from_template(human_template),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            SystemMessagePromptTemplate.from_template(system_template),
+            HumanMessagePromptTemplate.from_template(human_template),
+        ]
+    )
 
     prompt = prompt.partial(format_instructions=parser.get_format_instructions())
 
@@ -118,10 +122,12 @@ Task:
 
     human_template = "User description: {description}"
 
-    prompt = ChatPromptTemplate.from_messages([
-        SystemMessagePromptTemplate.from_template(system_template),
-        HumanMessagePromptTemplate.from_template(human_template),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            SystemMessagePromptTemplate.from_template(system_template),
+            HumanMessagePromptTemplate.from_template(human_template),
+        ]
+    )
 
     prompt = prompt.partial(format_instructions=parser.get_format_instructions())
 
@@ -141,10 +147,12 @@ Adjust the structured diagram analysis so that the next render addresses the cri
     human_template = """User description: {description}
 Critique: {critique}"""
 
-    prompt = ChatPromptTemplate.from_messages([
-        SystemMessagePromptTemplate.from_template(system_template),
-        HumanMessagePromptTemplate.from_template(human_template),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            SystemMessagePromptTemplate.from_template(system_template),
+            HumanMessagePromptTemplate.from_template(human_template),
+        ]
+    )
 
     prompt = prompt.partial(format_instructions=parser.get_format_instructions())
 

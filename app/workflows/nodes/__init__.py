@@ -2,7 +2,7 @@
 
 __all__ = [
     "analyze_node",
-    "render_node", 
+    "render_node",
     "critique_node",
     "adjust_node",
     "finalize_node",

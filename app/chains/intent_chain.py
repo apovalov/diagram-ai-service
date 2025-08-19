@@ -24,26 +24,21 @@ class IntentChain:
         self.prompt_template, self.parser = get_intent_prompt()
 
         # Create the main chain
-        self.chain = (
-            self.prompt_template
-            | self.llm
-            | self.parser
-        )
+        self.chain = self.prompt_template | self.llm | self.parser
 
         # Create chain with fallback to heuristic analysis
         self.chain_with_fallback = RunnableWithFallbacks(
-            runnable=self.chain,
-            fallbacks=[RunnableLambda(self._heuristic_fallback)]
+            runnable=self.chain, fallbacks=[RunnableLambda(self._heuristic_fallback)]
         )
 
     async def ainvoke(self, message: str, context: dict | None = None) -> IntentResult:
         """
         Analyze message intent using LangChain.
-        
+
         Args:
             message: User message to analyze
             context: Optional conversation context
-            
+
         Returns:
             IntentResult: Classified intent with confidence
         """

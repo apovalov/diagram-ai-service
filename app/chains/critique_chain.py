@@ -25,32 +25,24 @@ class CritiqueChain:
         self.prompt_template, self.parser = get_diagram_critique_prompt()
 
         # Create the main chain
-        self.chain = (
-            self.prompt_template
-            | self.llm
-            | self.parser
-        )
+        self.chain = self.prompt_template | self.llm | self.parser
 
         # Create chain with fallback to simple approval
         self.chain_with_fallback = RunnableWithFallbacks(
-            runnable=self.chain,
-            fallbacks=[RunnableLambda(self._heuristic_fallback)]
+            runnable=self.chain, fallbacks=[RunnableLambda(self._heuristic_fallback)]
         )
 
     async def ainvoke(
-        self,
-        description: str,
-        analysis: DiagramAnalysis,
-        image_bytes: bytes
+        self, description: str, analysis: DiagramAnalysis, image_bytes: bytes
     ) -> DiagramCritique:
         """
         Critique diagram using vision analysis.
-        
+
         Args:
             description: Original user description
             analysis: Current diagram analysis
             image_bytes: PNG image bytes of rendered diagram
-            
+
         Returns:
             DiagramCritique: Critique result with done flag and feedback
         """
@@ -97,10 +89,7 @@ class CritiqueChain:
             return self._create_heuristic_critique(analysis)
 
     async def _critique_with_openai_vision(
-        self,
-        description: str,
-        analysis: DiagramAnalysis,
-        image_bytes: bytes
+        self, description: str, analysis: DiagramAnalysis, image_bytes: bytes
     ) -> DiagramCritique:
         """Handle OpenAI vision-based critique."""
         # Convert image to base64 data URL
@@ -117,7 +106,10 @@ class CritiqueChain:
         enhanced_human_message = HumanMessage(
             content=[
                 {"type": "text", "text": human_message.content},
-                {"type": "text", "text": f"\nCurrent analysis JSON:\n{analysis.model_dump_json(indent=2)}"},
+                {
+                    "type": "text",
+                    "text": f"\nCurrent analysis JSON:\n{analysis.model_dump_json(indent=2)}",
+                },
                 {"type": "image_url", "image_url": {"url": image_data_url}},
             ]
         )
@@ -132,10 +124,7 @@ class CritiqueChain:
         return self.parser.parse(response.content)
 
     async def _critique_with_gemini_vision(
-        self,
-        description: str,
-        analysis: DiagramAnalysis,
-        image_bytes: bytes
+        self, description: str, analysis: DiagramAnalysis, image_bytes: bytes
     ) -> DiagramCritique:
         """Handle Gemini vision-based critique."""
         # For now, use the standard chain (Gemini vision handling would need special implementation)
@@ -152,14 +141,13 @@ class CritiqueChain:
             connected_nodes.add(conn.target)
 
         isolated_nodes = [
-            node.id for node in analysis.nodes
-            if node.id not in connected_nodes
+            node.id for node in analysis.nodes if node.id not in connected_nodes
         ]
 
         if isolated_nodes:
             return DiagramCritique(
                 done=False,
-                critique=f"Found isolated nodes that may need connections: {', '.join(isolated_nodes)}"
+                critique=f"Found isolated nodes that may need connections: {', '.join(isolated_nodes)}",
             )
 
         # If no obvious issues, approve the diagram
@@ -168,4 +156,7 @@ class CritiqueChain:
     async def _heuristic_fallback(self, inputs: dict[str, Any]) -> DiagramCritique:
         """Fallback runnable for when the main chain fails."""
         # For fallback, we'll just approve the diagram
-        return DiagramCritique(done=True, critique="Fallback approval - unable to perform detailed critique")
+        return DiagramCritique(
+            done=True,
+            critique="Fallback approval - unable to perform detailed critique",
+        )

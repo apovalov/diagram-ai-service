@@ -17,7 +17,7 @@ __all__ = ["LangChainAssistantAgent"]
 class LangChainAssistantAgent:
     """
     LangChain-based agent for handling assistant conversations and intent detection.
-    
+
     This is a drop-in replacement for the original AssistantAgent that uses LangChain
     chains instead of direct LLM API calls.
     """
@@ -34,11 +34,11 @@ class LangChainAssistantAgent:
     ) -> IntentResult:
         """
         Get intent from user message using LangChain.
-        
+
         Args:
             message: User message to analyze
             context: Optional conversation context
-            
+
         Returns:
             IntentResult: Classified intent with confidence score
         """
@@ -53,7 +53,7 @@ class LangChainAssistantAgent:
     def _create_fallback_intent(self, message: str) -> IntentResult:
         """
         Create a basic fallback intent when LangChain fails.
-        
+
         This method maintains compatibility with the original agent
         by using the same heuristic logic.
         """

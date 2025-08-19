@@ -22,6 +22,9 @@ from diagrams.generic.blank import Blank
 from app.agents.diagram_agent import DiagramAgent
 from app.agents.langchain_diagram_agent import LangChainDiagramAgent
 from app.core.config import Settings
+from app.core.execution_strategy import StrategyFactory, ExecutionMode
+from app.core.error_handler import ErrorHandler
+from app.core.exceptions import DiagramError, FatalError, ValidationError
 from app.core.logging import get_logger
 from app.core.schemas import (
     AnalysisCluster,
@@ -106,7 +109,7 @@ def canonical_type(raw: str, *, strict: bool = True, default: str = "service") -
 
 
 class DiagramService:
-    """Service for generating diagrams from natural language descriptions."""
+    """Enhanced diagram service with strategy pattern and unified error handling."""
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -114,18 +117,55 @@ class DiagramService:
         if not os.path.exists(self.temp_dir):
             os.makedirs(self.temp_dir)
 
-        # Initialize agents based on feature flag
+        # Initialize error handler
+        self.error_handler = ErrorHandler(
+            max_retries=getattr(settings, 'max_retries', 3),
+            backoff_factor=getattr(settings, 'backoff_factor', 1.5)
+        )
+
+        # Setup monitoring if enabled
+        self.langsmith_manager = None
+        self.metrics = None
+        if getattr(settings, 'langsmith_enabled', False):
+            self._setup_monitoring()
+        
+        # BACKWARD COMPATIBILITY: Keep old agent initialization for existing code
+        # This ensures any direct .agent access continues to work
         if self.settings.use_langchain:
-            self.agent = LangChainDiagramAgent()
-            self.original_agent = DiagramAgent()  # Keep as fallback
+            self.agent = LangChainDiagramAgent(settings)
+            self.original_agent = DiagramAgent(settings)  # Keep as fallback
             logger.info("Using LangChain-based diagram agent")
         else:
-            self.agent = DiagramAgent()
+            self.agent = DiagramAgent(settings)
             self.original_agent = None
             logger.info("Using original diagram agent")
 
+        logger.info(
+            f"DiagramService initialized (mode={getattr(settings, 'execution_mode', 'legacy')}, "
+            f"fallbacks={getattr(settings, 'enable_fallbacks', True)}, provider={settings.llm_provider})"
+        )
+
         # Run cleanup on initialization
         self._cleanup_old_files()
+
+    def _setup_monitoring(self):
+        """Setup LangSmith monitoring if available."""
+        try:
+            # Only import if LangSmith is enabled to avoid dependency issues
+            from ..core.langsmith_config import LangSmithManager
+            from ..core.langsmith_metrics import DiagramMetrics
+            
+            self.langsmith_manager = LangSmithManager(self.settings)
+            if self.langsmith_manager.is_enabled():
+                self.metrics = DiagramMetrics(self.langsmith_manager.client)
+                logger.info("LangSmith monitoring enabled")
+            else:
+                logger.warning("LangSmith initialization failed, monitoring disabled")
+                
+        except ImportError:
+            logger.info("LangSmith dependencies not available, monitoring disabled")
+        except Exception as e:
+            logger.warning(f"Failed to setup LangSmith monitoring: {e}")
 
     def _cleanup_old_files(self) -> None:
         """Clean up old temporary files on service initialization."""
@@ -140,25 +180,61 @@ class DiagramService:
     async def generate_diagram_from_description(
         self, description: str
     ) -> tuple[str, dict[str, Any]]:
-        """Generate diagram from natural language description.
-
-        Uses critique-enhanced generation if settings.use_critique_generation is True,
-        otherwise uses the standard generation workflow.
-        
-        Implements three-tier fallback: LangGraph → LangChain → Original
         """
+        Generate diagram with strategy pattern and fallback support.
+        
+        CRITICAL: This method maintains the exact same signature and behavior
+        as the original implementation for backward compatibility.
+        
+        Uses new strategy pattern if execution_mode is set, otherwise falls back
+        to legacy LangGraph → LangChain → Original workflow.
+        """
+        
+        request_id = str(uuid.uuid4())
+        start_time = time.monotonic()
+        
+        # Validate input (same as before)
+        if not description or not description.strip():
+            raise ValueError("Description cannot be empty")
+        
+        description = description.strip()
+        if len(description) > 5000:
+            logger.warning(f"Description truncated from {len(description)} to 5000 characters")
+            description = description[:5000]
+        
+        # NEW: Use strategy pattern if execution_mode is explicitly set (not auto/legacy)
+        execution_mode = getattr(self.settings, 'execution_mode', 'auto')
+        if execution_mode and execution_mode != 'auto':
+            try:
+                return await self._generate_with_strategy_pattern(
+                    description, request_id, start_time
+                )
+            except Exception as e:
+                # If strategy pattern fails and fallbacks are disabled, raise
+                if not getattr(self.settings, 'enable_fallbacks', True):
+                    raise
+                logger.warning(f"Strategy pattern failed, falling back to legacy workflow: {e}")
+        
+        # BACKWARD COMPATIBILITY: Use existing logic for legacy configurations
         # Try LangGraph first if enabled
         if getattr(self.settings, "use_langgraph", False):
             try:
-                from app.services.langgraph_diagram_service import LangGraphDiagramService
+                from app.services.langgraph_diagram_service import (
+                    LangGraphDiagramService,
+                )
+
                 langgraph_service = LangGraphDiagramService(self.settings)
-                return await langgraph_service.generate_diagram_from_description(description)
+                return await langgraph_service.generate_diagram_from_description(
+                    description
+                )
             except Exception as e:
                 if getattr(self.settings, "langgraph_fallback", True):
-                    logger.warning(f"LangGraph generation failed, falling back to LangChain/original: {e}")
+                    logger.warning(
+                        f"LangGraph generation failed, falling back to LangChain/original: {e}"
+                    )
                 else:
                     raise
-        
+
         # Fallback to LangChain if enabled
         if self.settings.use_langchain:
             try:
@@ -168,11 +244,13 @@ class DiagramService:
                     logger.warning(f"LangChain generation failed, using original: {e}")
                     return await self._generate_original(description)
                 raise
-        
+
         # Final fallback to original implementation
         return await self._generate_original(description)
 
-    async def _generate_with_langchain(self, description: str) -> tuple[str, dict[str, Any]]:
+    async def _generate_with_langchain(
+        self, description: str
+    ) -> tuple[str, dict[str, Any]]:
         """Generate diagram using LangChain agent."""
         if self.settings.use_critique_generation:
             # Use the critique-enhanced generation workflow
@@ -547,3 +625,173 @@ class DiagramService:
 
         lines.append("}")
         return "\n".join(lines)
+
+    # === NEW STRATEGY PATTERN METHODS ===
+
+    async def _generate_with_strategy_pattern(
+        self, description: str, request_id: str, start_time: float
+    ) -> tuple[str, dict[str, Any]]:
+        """Generate using new strategy pattern."""
+        
+        # Convert string execution_mode to enum
+        try:
+            mode = ExecutionMode(self.settings.execution_mode)
+        except ValueError:
+            logger.warning(f"Unknown execution_mode '{self.settings.execution_mode}', using AUTO")
+            mode = ExecutionMode.AUTO
+        
+        # Get strategy execution chain
+        if getattr(self.settings, 'enable_fallbacks', True):
+            strategy_chain = StrategyFactory.get_fallback_chain(mode, self.settings)
+        else:
+            strategy_chain = [mode]
+        
+        logger.info(
+            f"Starting diagram generation (request_id={request_id}, "
+            f"strategies={[s.value for s in strategy_chain]})"
+        )
+        
+        last_error = None
+        
+        # Try each strategy in the chain
+        for i, mode in enumerate(strategy_chain):
+            try:
+                # Create strategy
+                strategy = StrategyFactory.create_agent_strategy(mode, self.settings)
+                
+                logger.info(f"Attempting strategy {mode.value} (attempt {i+1}/{len(strategy_chain)})")
+                
+                # For LangGraph, use full service approach for now
+                if mode == ExecutionMode.LANGGRAPH:
+                    try:
+                        from app.services.langgraph_diagram_service import LangGraphDiagramService
+                        service = LangGraphDiagramService(self.settings)
+                        return await service.generate_diagram_from_description(description)
+                    except ImportError:
+                        logger.warning("LangGraph service not available, skipping")
+                        continue
+                
+                # For other strategies, use existing workflow but with new agent
+                if self.settings.use_critique_generation:
+                    result = await self._generate_with_critique_using_agent(strategy, description)
+                else:
+                    result = await self._generate_standard_using_agent(strategy, description)
+                
+                # Log success metrics
+                duration_ms = (time.monotonic() - start_time) * 1000
+                await self._log_success_metrics(
+                    request_id, description, mode.value, duration_ms, result[1]
+                )
+                
+                logger.info(
+                    f"Diagram generation successful with {mode.value} "
+                    f"(duration={duration_ms:.1f}ms, request_id={request_id})"
+                )
+                
+                return result
+                
+            except FatalError as e:
+                # Fatal errors should not trigger fallbacks
+                logger.error(f"Fatal error in {mode.value}: {e}")
+                await self._log_error_metrics(request_id, "diagram_generation", e, mode.value)
+                raise ValueError(str(e))  # Convert to original exception type for compatibility
+                
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Strategy {mode.value} failed: {e}")
+                await self._log_error_metrics(request_id, "diagram_generation", e, mode.value)
+                
+                # If this is the last strategy, break and raise
+                if i == len(strategy_chain) - 1:
+                    break
+                
+                # Log fallback attempt
+                next_mode = strategy_chain[i + 1]
+                logger.info(f"Falling back from {mode.value} to {next_mode.value}")
+        
+        # All strategies failed
+        total_duration = (time.monotonic() - start_time) * 1000
+        error_msg = f"All strategies failed after {total_duration:.1f}ms. Last error: {last_error}"
+        logger.error(error_msg)
+        raise Exception(error_msg) from last_error
+
+    async def _generate_with_critique_using_agent(
+        self, agent_strategy, description: str
+    ) -> tuple[str, dict[str, Any]]:
+        """Generate with critique using provided agent strategy."""
+        # Temporarily replace the agent and use existing workflow
+        original_agent = self.agent
+        try:
+            # Replace agent with strategy agent
+            self.agent = agent_strategy.agent if hasattr(agent_strategy, 'agent') else agent_strategy
+            
+            # Use existing critique workflow
+            (
+                (image_before, image_after),
+                metadata
+            ) = await self.generate_diagram_with_critique(description)
+            
+            final_image = image_after if image_after else image_before
+            metadata["critique_applied"] = bool(image_after)
+            return final_image, metadata
+        except AttributeError:
+            # Fallback if agent doesn't have expected interface
+            return await self._generate_standard_using_agent(agent_strategy, description)
+        finally:
+            # Always restore original agent
+            self.agent = original_agent
+
+    async def _generate_standard_using_agent(
+        self, agent_strategy, description: str
+    ) -> tuple[str, dict[str, Any]]:
+        """Generate without critique using provided agent strategy."""
+        # Use the existing _generate_diagram_standard method but with the strategy agent
+        original_agent = self.agent
+        try:
+            # Temporarily replace agent
+            self.agent = agent_strategy.agent if hasattr(agent_strategy, 'agent') else agent_strategy
+            return await self._generate_diagram_standard(description)
+        finally:
+            # Restore original agent
+            self.agent = original_agent
+
+    async def _log_success_metrics(
+        self, 
+        request_id: str, 
+        description: str, 
+        strategy: str, 
+        duration_ms: float, 
+        metadata: dict[str, Any]
+    ):
+        """Log success metrics to monitoring system."""
+        if self.metrics:
+            try:
+                await self.metrics.log_diagram_generation(
+                    request_id=request_id,
+                    description=description,
+                    execution_mode=strategy,
+                    success=True,
+                    duration_ms=duration_ms,
+                    metadata=metadata
+                )
+            except Exception as e:
+                logger.warning(f"Failed to log success metrics: {e}")
+
+    async def _log_error_metrics(
+        self, 
+        request_id: str, 
+        operation: str, 
+        error: Exception, 
+        strategy: str
+    ):
+        """Log error metrics to monitoring system."""
+        if self.metrics:
+            try:
+                await self.metrics.log_error(
+                    request_id=request_id,
+                    operation=operation,
+                    error=error,
+                    execution_mode=strategy
+                )
+            except Exception as e:
+                logger.warning(f"Failed to log error metrics: {e}")

@@ -15,9 +15,9 @@ async def test_langgraph_service_initialization():
         mock_llm=True,
         use_critique_generation=False,
     )
-    
+
     service = LangGraphDiagramService(settings)
-    
+
     assert service.settings == settings
     assert service.workflow is not None
     assert service.langgraph_config is not None
@@ -31,23 +31,23 @@ async def test_langgraph_basic_generation():
         mock_llm=True,
         use_critique_generation=False,
     )
-    
+
     service = LangGraphDiagramService(settings)
-    
+
     description = "Create a simple web application with database"
     result = await service.generate_diagram_from_description(description)
-    
+
     image_data, metadata = result
-    
+
     # Verify basic structure
     assert isinstance(image_data, str)
     assert len(image_data) > 0
     assert isinstance(metadata, dict)
-    
+
     # Verify metadata contains expected fields
     required_fields = [
         "nodes_created",
-        "clusters_created", 
+        "clusters_created",
         "connections_made",
         "generation_time",
         "timing",
@@ -55,14 +55,14 @@ async def test_langgraph_basic_generation():
         "critique_applied",
         "request_id",
     ]
-    
+
     for field in required_fields:
         assert field in metadata, f"Missing required field: {field}"
-    
+
     # Verify timing structure
     timing = metadata["timing"]
     assert "analysis_s" in timing
-    assert "render_s" in timing 
+    assert "render_s" in timing
     assert "total_s" in timing
 
 
@@ -74,17 +74,17 @@ async def test_langgraph_with_critique():
         mock_llm=True,
         use_critique_generation=True,
     )
-    
+
     service = LangGraphDiagramService(settings)
-    
+
     description = "Create a microservices architecture"
     result = await service.generate_diagram_from_description(description)
-    
+
     image_data, metadata = result
-    
+
     assert isinstance(image_data, str)
     assert len(image_data) > 0
-    
+
     # In mock mode, critique should be skipped but field should exist
     assert "critique_applied" in metadata
     assert isinstance(metadata["critique_applied"], bool)
@@ -98,27 +98,27 @@ async def test_langgraph_critique_workflow():
         mock_llm=True,
         use_critique_generation=True,
     )
-    
+
     service = LangGraphDiagramService(settings)
-    
+
     description = "Create an AWS serverless application"
     result = await service.generate_diagram_with_critique(description)
-    
+
     (image_before, image_after), metadata = result
-    
+
     # Should have at least the before image
     assert isinstance(image_before, str)
     assert len(image_before) > 0
-    
+
     # image_after may be None in mock mode
     assert image_after is None or isinstance(image_after, str)
-    
+
     # Verify metadata structure
     assert isinstance(metadata, dict)
     assert "critique_applied" in metadata
 
 
-@pytest.mark.asyncio 
+@pytest.mark.asyncio
 async def test_metadata_formatting():
     """Test that metadata formatting matches original service contract."""
     settings = Settings(
@@ -126,9 +126,9 @@ async def test_metadata_formatting():
         mock_llm=True,
         use_critique_generation=False,
     )
-    
+
     service = LangGraphDiagramService(settings)
-    
+
     # Create a mock final state
     final_state = DiagramWorkflowState(
         description="test",
@@ -154,14 +154,14 @@ async def test_metadata_formatting():
         human_review_enabled=False,
         cache_enabled=False,
     )
-    
+
     metadata = service._format_metadata(final_state)
-    
+
     # Verify all expected fields are present
     expected_fields = [
         "nodes_created",
         "clusters_created",
-        "connections_made", 
+        "connections_made",
         "generation_time",
         "timing",
         "analysis_method",
@@ -169,10 +169,10 @@ async def test_metadata_formatting():
         "request_id",
         "errors",
     ]
-    
+
     for field in expected_fields:
         assert field in metadata
-    
+
     # Verify specific values
     assert metadata["analysis_method"] == "mock"
     assert metadata["request_id"] == "test-123"

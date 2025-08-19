@@ -74,10 +74,12 @@ def get_llm() -> BaseChatModel:
 
             if settings.use_vertex_ai and settings.google_cloud_project:
                 # Use Vertex AI configuration
-                model_config.update({
-                    "project": settings.google_cloud_project,
-                    "location": settings.google_cloud_location,
-                })
+                model_config.update(
+                    {
+                        "project": settings.google_cloud_project,
+                        "location": settings.google_cloud_location,
+                    }
+                )
             else:
                 # Use Gemini Developer API
                 model_config["google_api_key"] = settings.gemini_api_key

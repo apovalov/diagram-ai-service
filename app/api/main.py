@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, HTTPException
+import time
+import uuid
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import Settings, settings
 from app.core.logging import get_logger, setup_logging
@@ -19,7 +22,111 @@ from app.utils.files import save_image_base64
 setup_logging()
 logger = get_logger(__name__)
 
+
+class MonitoringMiddleware(BaseHTTPMiddleware):
+    """Optional monitoring middleware that never breaks core functionality."""
+
+    def __init__(self, app, settings: Settings):
+        super().__init__(app)
+        self.settings = settings
+        self.metrics = None
+        
+        # Only initialize if monitoring is enabled
+        if getattr(settings, 'langsmith_enabled', False):
+            self._setup_monitoring()
+
+    def _setup_monitoring(self):
+        """Setup monitoring components safely."""
+        try:
+            from ..core.langsmith_config import LangSmithManager
+            from ..core.langsmith_metrics import DiagramMetrics
+            
+            manager = LangSmithManager(self.settings)
+            if manager.is_enabled():
+                self.metrics = DiagramMetrics(manager.client)
+                logger.info("API monitoring middleware enabled")
+        except Exception as e:
+            logger.info(f"Monitoring middleware initialization failed: {e}")
+            self.metrics = None
+
+    async def dispatch(self, request: Request, call_next):
+        """Process request with optional monitoring."""
+        start_time = time.time()
+        request_id = str(uuid.uuid4())
+        
+        # Add request ID to headers for tracing
+        request.state.request_id = request_id
+
+        try:
+            # Call the next middleware/handler
+            response = await call_next(request)
+            
+            # Log successful request if monitoring is enabled
+            if self.metrics:
+                duration_ms = (time.time() - start_time) * 1000
+                await self._log_request_success(request, response, duration_ms, request_id)
+            
+            # Add request ID to response headers
+            response.headers["X-Request-ID"] = request_id
+            return response
+            
+        except Exception as e:
+            # Log error if monitoring is enabled
+            if self.metrics:
+                duration_ms = (time.time() - start_time) * 1000
+                await self._log_request_error(request, e, duration_ms, request_id)
+            
+            # Re-raise the exception to maintain normal error handling
+            raise
+
+    async def _log_request_success(self, request: Request, response: Response, duration_ms: float, request_id: str):
+        """Log successful request safely."""
+        try:
+            await self.metrics.log_diagram_generation(
+                request_id=request_id,
+                description=f"{request.method} {request.url.path}",
+                execution_mode="api_request",
+                success=True,
+                duration_ms=duration_ms,
+                metadata={
+                    "method": request.method,
+                    "path": str(request.url.path),
+                    "status_code": response.status_code,
+                    "user_agent": request.headers.get("user-agent", "unknown")
+                }
+            )
+        except Exception as e:
+            logger.debug(f"Failed to log request success: {e}")
+
+    async def _log_request_error(self, request: Request, error: Exception, duration_ms: float, request_id: str):
+        """Log request error safely."""
+        try:
+            await self.metrics.log_error(
+                request_id=request_id,
+                operation="api_request",
+                error=error,
+                execution_mode="api_request",
+                metadata={
+                    "method": request.method,
+                    "path": str(request.url.path),
+                    "duration_ms": duration_ms,
+                    "user_agent": request.headers.get("user-agent", "unknown")
+                }
+            )
+        except Exception as e:
+            logger.debug(f"Failed to log request error: {e}")
+
+
+# Initialize FastAPI app
 app = FastAPI(title="Diagram API Service", version="0.1.0")
+
+# Add monitoring middleware if enabled (this is safe - it handles its own failures)
+try:
+    if getattr(settings, 'langsmith_enabled', False):
+        app.add_middleware(MonitoringMiddleware, settings=settings)
+        logger.info("Added monitoring middleware")
+except Exception as e:
+    logger.warning(f"Failed to add monitoring middleware: {e}")
 
 
 def get_settings() -> Settings:

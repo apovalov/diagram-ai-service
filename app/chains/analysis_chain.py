@@ -28,25 +28,20 @@ class AnalysisChain:
         self.prompt_template, self.parser = get_diagram_analysis_prompt()
 
         # Create the main chain
-        self.chain = (
-            self.prompt_template
-            | self.llm
-            | self.parser
-        )
+        self.chain = self.prompt_template | self.llm | self.parser
 
         # Create chain with fallback to heuristic analysis
         self.chain_with_fallback = RunnableWithFallbacks(
-            runnable=self.chain,
-            fallbacks=[RunnableLambda(self._heuristic_fallback)]
+            runnable=self.chain, fallbacks=[RunnableLambda(self._heuristic_fallback)]
         )
 
     async def ainvoke(self, description: str) -> DiagramAnalysis:
         """
         Generate diagram analysis from description using LangChain.
-        
+
         Args:
             description: Natural language description of the diagram
-            
+
         Returns:
             DiagramAnalysis: Structured analysis with nodes, clusters, and connections
         """
@@ -62,7 +57,9 @@ class AnalysisChain:
                 len(description or ""),
             )
 
-            result = await self.chain_with_fallback.ainvoke({"description": description})
+            result = await self.chain_with_fallback.ainvoke(
+                {"description": description}
+            )
 
             elapsed_ms = int((time.monotonic() - start_time) * 1000)
 
@@ -97,9 +94,7 @@ class AnalysisChain:
         return DiagramAnalysis(
             title="Application Diagram",
             nodes=[
-                AnalysisNode(
-                    id="alb", type="alb", label="Application Load Balancer"
-                ),
+                AnalysisNode(id="alb", type="alb", label="Application Load Balancer"),
                 AnalysisNode(id="web1", type="ec2", label="Web 1"),
                 AnalysisNode(id="db", type="rds", label="DB"),
             ],
@@ -121,14 +116,20 @@ class AnalysisChain:
         node_counter = 1
 
         # Database detection
-        if any(word in desc_lower for word in ["database", "db", "rds", "dynamodb", "mysql", "postgres"]):
+        if any(
+            word in desc_lower
+            for word in ["database", "db", "rds", "dynamodb", "mysql", "postgres"]
+        ):
             if "dynamo" in desc_lower:
                 nodes.append(AnalysisNode(id="db1", type="dynamodb", label="Database"))
             else:
                 nodes.append(AnalysisNode(id="db1", type="rds", label="Database"))
 
         # Web server/load balancer detection
-        if any(word in desc_lower for word in ["web", "server", "load balancer", "alb", "nginx"]):
+        if any(
+            word in desc_lower
+            for word in ["web", "server", "load balancer", "alb", "nginx"]
+        ):
             if "load" in desc_lower or "alb" in desc_lower:
                 nodes.append(AnalysisNode(id="lb1", type="alb", label="Load Balancer"))
             nodes.append(AnalysisNode(id="web1", type="ec2", label="Web Server"))
@@ -143,7 +144,9 @@ class AnalysisChain:
 
         # API Gateway detection
         if any(word in desc_lower for word in ["api", "gateway", "rest"]):
-            nodes.append(AnalysisNode(id="api1", type="api_gateway", label="API Gateway"))
+            nodes.append(
+                AnalysisNode(id="api1", type="api_gateway", label="API Gateway")
+            )
 
         # S3 detection
         if any(word in desc_lower for word in ["s3", "storage", "bucket", "file"]):
@@ -159,13 +162,19 @@ class AnalysisChain:
             web_nodes = [n for n in nodes if n.type in ["ec2", "service"]]
             db_nodes = [n for n in nodes if n.type in ["rds", "dynamodb"]]
             if web_nodes and db_nodes:
-                connections.append(AnalysisConnection(source=web_nodes[0].id, target=db_nodes[0].id))
+                connections.append(
+                    AnalysisConnection(source=web_nodes[0].id, target=db_nodes[0].id)
+                )
 
             # Connect API Gateway to Lambda
             api_nodes = [n for n in nodes if n.type == "api_gateway"]
             lambda_nodes = [n for n in nodes if n.type == "lambda"]
             if api_nodes and lambda_nodes:
-                connections.append(AnalysisConnection(source=api_nodes[0].id, target=lambda_nodes[0].id))
+                connections.append(
+                    AnalysisConnection(
+                        source=api_nodes[0].id, target=lambda_nodes[0].id
+                    )
+                )
 
         # Create basic clustering for web tier
         web_tier_nodes = [n.id for n in nodes if n.type in ["ec2", "alb"]]
